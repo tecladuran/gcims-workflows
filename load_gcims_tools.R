@@ -1,3 +1,14 @@
 # Load all custom GC-IMS functions from the R/ folder
-files <- list.files('R', pattern = '\\.R$', full.names = TRUE)
-sapply(files, source)
+library(here)
+cat(">>> loading GCIMS tools...\n")
+files <- list.files(here("R"), pattern = "\\.R$", full.names = TRUE)
+print(files)
+for (f in files) {
+  cat("→ Sourcing:", f, "\n")
+  tryCatch(
+    source(f),
+    error = function(e) {
+      cat("⚠️ Error sourcing", f, ":", e$message, "\n")
+    }
+  )
+}
