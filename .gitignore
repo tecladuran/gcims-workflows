@@ -36,7 +36,20 @@
 # R Environment Variables
 .Renviron
 
+# Ignore .Rmd in docs
+docs/*.Rmd
+docs/*/*
 
+# Not ignore com .html o .pdf
+!docs/*.html
+!docs/*.pdf
+
+!docs/*_files/
+!docs/*_files/**
+
+# Just in case
+!docs/*_files/figure-gfm/
+!docs/*_files/figure-gfm/**
 
 # translation temp files
 po/*~
