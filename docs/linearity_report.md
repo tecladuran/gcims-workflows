@@ -57,7 +57,8 @@ sessions.
 ### Higher $R^2$
 
 <img src="linearity_report_files/figure-gfm/plot-top-batch-1.png" style="display: block; margin: auto;" />
-\### Lower $R^2$
+
+### Lower $R^2$
 
 <img src="linearity_report_files/figure-gfm/plot-bottom-batch-1.png" style="display: block; margin: auto;" />
 
