@@ -21,13 +21,12 @@
 # RStudio files
 .Rproj.user/
 
-
-# OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
+# OAuth2 token
 .httr-oauth
 
 # knitr and R markdown default cache directories
 *_cache/
-/cache/
+cache/
 
 # Temporary files created by R markdown
 *.utf8.md
@@ -36,18 +35,17 @@
 # R Environment Variables
 .Renviron
 
-# Ignore .Rmd in docs
+# Ignore Rmd sources in docs
 docs/*.Rmd
-docs/*/*
 
-# Not ignore com .html o .pdf
+# Ignore all subfolders in docs by default (optional)
+# docs/*/*
+
+# Allow rendered outputs in docs
 !docs/*.html
 !docs/*.pdf
-
 !docs/*_files/
 !docs/*_files/**
-
-# Just in case
 !docs/*_files/figure-gfm/
 !docs/*_files/figure-gfm/**
 
@@ -56,4 +54,3 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
-.Rproj.user
