@@ -1,5 +1,4 @@
 Full Workflow: From Raw Data to Peak Table
-================
 Tecla Duran Fort
 2025-04-17
 
@@ -51,6 +50,7 @@ urine$realize()
 
 Alignment of the samples based on the reference sample to standardize
 the data across different runs.
+<<<<<<< HEAD
 <img src="Full_workflow_files/figure-gfm/pre-alignment-rics-1.png" style="display: block; margin: auto;" />
 
 ``` r
@@ -66,7 +66,9 @@ filterDt(urine, dt_range = c(min(dtime(urine)),max(dtime(urine))))
 filterRt(urine, rt_range = c(min(rtime(urine)),max(rtime(urine))))
 ```
 
+
 <img src="Full_workflow_files/figure-gfm/pre-alignment-2-rics-1.png" style="display: block; margin: auto;" />
+
 Further alignment using a new method to ensure accurate peak detection.
 
 ``` r
@@ -78,7 +80,9 @@ filterDt(urine, dt = c(5, 14)) # in ms
 ```
 
 <img src="Full_workflow_files/figure-gfm/post-alignment-rics-1.png" style="display: block; margin: auto;" />
-\## 2.3. Peak Detection and Clustering
+
+
+## 2.3. Peak Detection and Clustering
 
 Peak detection and clustering to identify significant features in the
 data.
