@@ -1,0 +1,373 @@
+---
+title: "Linear Association Analysis in GC-IMS Data"
+author: "Tecla Duran Fort"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+    fig_caption: true
+    
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.align = "center", fig.width = 5.5, fig.height = 4)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+```
+
+# 1. Intra-batch linearity
+
+This section focuses on **within-session trends**, assessing whether intensity drifts during a batch (e.g. due to instrument drift or temperature rise over time).
+
+## Linear association with `elapsed_time`
+
+We analyse the potential **intra-day variability** in signal intensity by measuring how well it correlates with `elapsed_time`.
+
+This variable indicates the time (in **hours**) that has passed since the beginning of the measurement session (**i.e., since the start of the batch**) until each sample was analysed. It captures whether the position of a sample within a batch has a linear effect on signal intensity, for example due to chemical degradation at ambient temperature or instrumental drift.
+
+Since `elapsed_time` and intensity are both continuous variables defined at **sample level**, we directly apply a linear model without any aggregation.
+
+```{r load-data}
+df <- read.csv("../../data/peak_table_var.csv")
+```
+
+```{r r2-elapsed, fig.width=6, fig.height=4, echo=FALSE}
+r2_elapsed <- df %>%
+  pivot_longer(cols = starts_with("Cluster"), names_to = "Cluster", values_to = "Intensity") %>%
+  group_by(Cluster) %>%
+  summarise(R2 = summary(lm(Intensity ~ elapsed_time, data = cur_data()))$r.squared)
+
+ggplot(r2_elapsed, aes(x = R2)) +
+  geom_histogram(binwidth = 0.05, fill = "#A8DADC", color = "white") +
+  labs(
+    title = "Histogram of R² values (Intensity ~ Elapsed Time)",
+    x = expression(R^2),
+    y = "Number of Clusters"
+  ) +
+  theme_minimal()
+
+
+threshold <- median(r2_elapsed$R2)
+top_elapsed <- r2_elapsed %>% filter(R2 >= threshold) %>% arrange(desc(R2)) %>% slice_head(n = 3)
+bottom_elapsed <- r2_elapsed %>% filter(R2 < threshold) %>% arrange(R2) %>% slice_head(n = 3)
+```
+
+### Higher \( R^2 \)
+
+```{r plot-top-elapsed, fig.width = 12, fig.height = 3, echo=FALSE}
+plots <- lapply(top_elapsed$Cluster, function(clust) {
+  df %>%
+    ggplot(aes_string(x = "elapsed_time", y = clust)) +
+    geom_point(color = "#457B9D") +
+    geom_smooth(method = "lm", se = FALSE, color = "#E63946") +
+    labs(
+      title = paste0(clust, "  |  R² = ", round(top_elapsed$R2[top_elapsed$Cluster == clust], 2)),
+      x = "Elapsed Time (hours)",
+      y = "Intensity"
+    ) +
+    theme_minimal()
+})
+
+wrap_plots(plots, nrow = 1)
+```
+
+
+### Lower \( R^2 \)
+
+```{r plot-bottom-elapsed, fig.width = 12, fig.height = 3, echo=FALSE}
+
+plots <- lapply(bottom_elapsed$Cluster, function(clust) {
+  df %>%
+    ggplot(aes_string(x = "elapsed_time", y = clust)) +
+    geom_point(color = "#A8A8A8") +
+    geom_smooth(method = "lm", se = FALSE, color = "#888888") +
+    labs(
+      title = paste0(clust, "  |  R² = ", round(bottom_elapsed$R2[bottom_elapsed$Cluster == clust], 2)),
+      x = "Elapsed Time (hours)",
+      y = "Intensity"
+    ) +
+    theme_minimal()
+})
+
+# Mostrar-los en una sola fila
+wrap_plots(plots, nrow = 1)
+```
+
+
+
+# 2. Inter-batch linearity
+
+This section investigates **between-day linear trends** by testing whether signal intensities vary systematically across measurement sessions (batches).
+
+## 2.1. Linear association with batch index
+
+Now we explore **inter-day variability**, using the variable `batch` as a proxy for measurement session.
+
+Although `batch` is a discrete index, it reflects an underlying **temporal order**, with each batch corresponding to a different day or instrumental session. Thus, we model it as a continuous ordinal variable to test whether signal intensities change systematically across sessions.
+
+```{r r2-batch, fig.width=6, fig.height=4, echo=FALSE}
+r2_batch <- df %>%
+  pivot_longer(cols = starts_with("Cluster"), names_to = "Cluster", values_to = "Intensity") %>%
+  group_by(Cluster) %>%
+  summarise(R2 = summary(lm(Intensity ~ batch, data = cur_data()))$r.squared)
+
+ggplot(r2_batch, aes(x = R2)) +
+  geom_histogram(binwidth = 0.05, fill = "#C8D6D4", color = "white") +
+  labs(
+    title = "Histogram of R² values (Intensity ~ Batch)",
+    x = expression(R^2),
+    y = "Number of Clusters"
+  ) +
+  theme_minimal()
+
+
+threshold_batch <- median(r2_batch$R2)
+
+top_batch <- r2_batch %>% filter(R2 >= threshold_batch) %>% arrange(desc(R2)) %>% slice_head(n = 3)
+bottom_batch <- r2_batch %>% filter(R2 < threshold_batch) %>% arrange(R2) %>% slice_head(n = 3)
+```
+
+### Higher \( R^2 \)
+
+```{r plot-top-batch, fig.width = 12, fig.height = 3, echo=FALSE}
+plots <- lapply(top_batch$Cluster, function(clust) {
+  df %>%
+    ggplot(aes_string(x = "batch", y = clust)) +
+    geom_point(color = "#457B9D") +
+    geom_smooth(method = "lm", se = FALSE, color = "#E63946") +
+    labs(
+      title = paste0(clust, "  |  R² = ", round(top_batch$R2[top_batch$Cluster == clust], 2)),
+      x = "Batch Index",
+      y = "Intensity"
+    ) +
+    theme_minimal()
+})
+
+wrap_plots(plots, nrow = 1)
+```
+
+
+### Lower \( R^2 \)
+
+```{r plot-bottom-batch, fig.width = 12, fig.height = 3, echo=FALSE}
+plots <- lapply(bottom_batch$Cluster, function(clust) {
+  df %>%
+    ggplot(aes_string(x = "batch", y = clust)) +
+  geom_point(color = "#A8A8A8") +
+    geom_smooth(method = "lm", se = FALSE, color = "#888888")+
+    labs(
+      title = paste0(clust, "  |  R² = ", round(bottom_batch$R2[bottom_batch$Cluster == clust], 2)),
+      x = "Batch Index",
+      y = "Intensity"
+    ) +
+    theme_minimal()
+})
+
+wrap_plots(plots, nrow = 1)
+```
+
+
+## 2.2. Linearity with batch index **(mean intensity)**
+
+While the batch index reflects a temporal sequence, it is inherently a **categorical variable**, and assuming a linear relationship with intensity is not straightforward. 
+Although a linear trend has been observed empirically, we seek to determine **whether modeling `batch` as a numeric, temporally ordered variable is meaningful**, or whether alternative methods treating it as categorical would be more appropriate.
+
+To support this evaluation, we apply a **batch-wise averaging strategy**, which reduces intra-batch noise and helps reveal whether signal intensities evolve systematically across measurement sessions.
+
+```{r batch-means, include=FALSE}
+df_means <- df %>%
+  dplyr::select(SampleID, batch, starts_with("Cluster")) %>%
+  dplyr::group_by(batch) %>%
+  dplyr::summarise(across(starts_with("Cluster"), mean), .groups = "drop")
+```
+
+We then calculate \( R^2 \) values from linear models fitted on these mean intensities:
+
+```{r r2-batch-mean,  fig.width=6, fig.height=4, echo=FALSE}
+r2_batch_mean <- df_means %>%
+  pivot_longer(cols = starts_with("Cluster"), names_to = "Cluster", values_to = "MeanIntensity") %>%
+  group_by(Cluster) %>%
+  summarise(R2 = summary(lm(MeanIntensity ~ batch, data = cur_data()))$r.squared)
+
+ggplot(r2_batch_mean, aes(x = R2)) +
+  geom_histogram(binwidth = 0.05, fill = "#BFD3C1", color = "white") +
+  labs(
+    title = "Histogram of R² values (Mean Intensity ~ Batch Index)",
+    x = expression(R^2),
+    y = "Number of Clusters"
+  ) +
+  theme_minimal()
+
+top_batch_mean <- r2_batch_mean %>% filter(R2 >= median(R2)) %>% arrange(desc(R2)) %>% slice_head(n = 3)
+bottom_batch_mean <- r2_batch_mean %>% filter(R2 < median(R2)) %>% arrange(R2) %>% slice_head(n = 3)
+```
+
+### Higher \( R^2 \)
+
+```{r plot-top-batch-mean, fig.width=12, fig.height=3, echo=FALSE}
+plots <- lapply(top_batch_mean$Cluster, function(clust) {
+  df_means %>%
+    ggplot(aes_string(x = "batch", y = clust)) +
+    geom_point(color = "#118AB2") +
+    geom_smooth(method = "lm", se = FALSE, color = "#EF476F") +
+    labs(
+      title = paste0(clust, "  |  R² = ", round(top_batch_mean$R2[top_batch_mean$Cluster == clust], 2)),
+      x = "Batch Index",
+      y = "Mean Intensity"
+    ) +
+    theme_minimal()
+})
+wrap_plots(plots, nrow = 1)
+```
+
+### Lower \( R^2 \)
+
+```{r plot-bottom-batch-mean, fig.width=12, fig.height=3, echo=FALSE}
+plots <- lapply(bottom_batch_mean$Cluster, function(clust) {
+  df_means %>%
+    ggplot(aes_string(x = "batch", y = clust)) +
+    geom_point(color = "#BDBDBD") +
+    geom_smooth(method = "lm", se = FALSE, color = "#999999") +
+    labs(
+      title = paste0(clust, "  |  R² = ", round(bottom_batch_mean$R2[bottom_batch_mean$Cluster == clust], 2)),
+      x = "Batch Index",
+      y = "Mean Intensity"
+    ) +
+    theme_minimal()
+})
+wrap_plots(plots, nrow = 1)
+```
+
+The histogram shows that a large proportion of clusters exhibit a strong linear association between mean intensity and batch index. This consistent trend across sessions supports the decision to treat `batch` as a **numeric ordinal variable** in subsequent analyses, as it effectively captures a systematic temporal component in the data.
+
+
+### Methodological justification
+
+Using `batch` as a numeric variable enables the detection of linear trends across sessions. Treating it as a categorical factor would require as many coefficients as batches, increasing model complexity and making interpretation difficult.
+
+
+
+## 2.3. Linear association with storage time
+
+Batch numbers do not represent equally spaced time intervals. To account for potential degradation over time, we define `storage_time` as the number of days between the first measurement and each sample's analysis date. Since all samples were collected on the same day, this variable captures differences in storage duration across sessions.
+
+As with the batch analysis, we compute **mean intensities per batch** and assess their linear relationship with `storage_time`.
+
+
+```{r compute-storage-time}
+df$batch_day <- as.Date(df$batch_day)
+first_day <- min(df$batch_day)
+df$storage_time <- as.numeric(difftime(df$batch_day, first_day, units = "days"))
+```
+
+```{r storage-means}
+df_storage <- df %>%
+  dplyr::select(SampleID, storage_time, starts_with("Cluster")) %>%
+  dplyr::group_by(storage_time) %>%
+  dplyr::summarise(across(starts_with("Cluster"), mean), .groups = "drop")
+```
+
+```{r r2-storage, fig.width=6, fig.height=4}
+r2_storage <- df_storage %>%
+  pivot_longer(cols = starts_with("Cluster"), names_to = "Cluster", values_to = "MeanIntensity") %>%
+  group_by(Cluster) %>%
+  summarise(R2 = summary(lm(MeanIntensity ~ storage_time, data = cur_data()))$r.squared)
+ggplot(r2_storage, aes(x = R2)) +
+  geom_histogram(binwidth = 0.05, alpha=0.7, fill = "#F4A261", color = "white") +
+  labs(
+    title = "Histogram of R² values (Mean Intensity ~ Storage Time)",
+    x = expression(R^2),
+    y = "Number of Clusters"
+  ) +
+  theme_minimal()
+top_storage <- r2_storage %>% filter(R2 >= threshold) %>% arrange(desc(R2)) %>% slice_head(n = 3)
+bottom_storage <- r2_storage %>% filter(R2 < threshold) %>% arrange(R2) %>% slice_head(n = 3)
+```
+
+#### Higher \( R^2 \)
+
+```{r plot-top-storage, fig.width=12, fig.height=3}
+plots <- lapply(top_storage$Cluster, function(clust) {
+  df_storage %>%
+    ggplot(aes_string(x = "storage_time", y = clust)) +
+    geom_point(color = "#2A9D8F") +
+    geom_smooth(method = "lm", se = FALSE, color = "#E76F51") +
+    labs(
+      title = paste0(clust, "  |  R² = ", round(top_storage$R2[top_storage$Cluster == clust], 2)),
+      x = "Storage Time (days)",
+      y = "Mean Intensity"
+    ) +
+    theme_minimal()
+})
+wrap_plots(plots, nrow = 1)
+```
+
+#### Lower \( R^2 \)
+
+```{r plot-bottom-storage, fig.width=12, fig.height=3}
+plots <- lapply(bottom_storage$Cluster, function(clust) {
+  df_storage %>%
+    ggplot(aes_string(x = "storage_time", y = clust)) +
+    geom_point(color = "#BDBDBD") +
+    geom_smooth(method = "lm", se = FALSE, color = "#999999")  +
+    labs(
+      title = paste0(clust, "  |  R² = ", round(bottom_storage$R2[bottom_storage$Cluster == clust], 2)),
+      x = "Storage Time (days)",
+      y = "Mean Intensity"
+    ) +
+    theme_minimal()
+})
+wrap_plots(plots, nrow = 1)
+```
+
+
+
+## 2.4 Comparison of R² Distributions
+
+To evaluate whether **batch index** or **storage time** better explains the variability in signal intensity, we compare the distributions of their corresponding \( R^2 \) values. Both variables are temporally structured, but differ in nature: `storage_time` is continuous and absolute, while `batch` is an ordinal index tied to measurement sessions.
+
+
+```{r compare-r2-distributions, fig.width=6, fig.height=4}
+r2_batch_mean$Type <- "Batch"
+r2_storage$Type <- "Storage Time"
+
+r2_combined <- bind_rows(
+  r2_batch_mean %>% rename(R2 = R2),
+  r2_storage %>% rename(R2 = R2)
+)
+
+ggplot(r2_combined, aes(x = R2, fill = Type)) +
+  geom_histogram(position = "identity", alpha = 0.8, binwidth = 0.05, color = "white") +
+  scale_fill_manual(values = c("Batch" = "#BFD3C1", "Storage Time" = "#F4A261")) +
+  labs(
+    title = "Comparison of R² Distributions (Mean Intensity Models)",
+    x = expression(R^2),
+    y = "Number of Clusters",
+    fill = NULL
+  ) +
+  theme_minimal()
+```
+```{r, fig.width=6, fig.height=4}
+
+# Violin plot
+ggplot(r2_combined, aes(x = Type, y = R2, fill = Type)) +
+  geom_violin(alpha = 0.5, color = NA) +
+  geom_boxplot(width = 0.1, outlier.shape = NA, fill = "white") +
+  scale_fill_manual(values = c("Batch" = "#BFD3C1", "Storage Time" = "#F4A261")) +
+  labs(
+    title = "Distribution of R² values by Model Type",
+    x = NULL,
+    y = expression(R^2)
+  ) +
+  theme_minimal()
+
+```
+
+We observe that the distribution of \( R^2 \) values for `batch` is clearly shifted towards higher values. This indicates that modeling intensity as a function of `batch` yields **stronger and more consistent linear relationships** across clusters.
+
+## 2.5. Summary and Decision
+
+We conclude that the batch index captures not only temporal drift, but also additional session-specific effects that are not fully explained by storage duration alone. In subsequent analyses, **we will use the batch index as a numeric proxy to assess inter-session variability and account for systematic differences across measurement days.**
+
