@@ -244,9 +244,9 @@ for (ampliation in ampliation_values) {
 ggplot(results, aes(x = ampliation, y = MinValue, color = factor(SampleID), group = SampleID)) +
   geom_line() +
   geom_point() +
-  labs(title = "Low-Decile Intensity vs ROI Expansion (Cluster 1)",
+  labs(title = "Minimum Intensity vs ROI Expansion (Cluster 1)",
        x = "Expansion (%)",
-       y = "Minimum Value",
+       y = "Minimum Value (5th Percentile of Intensities)",
        color = "Sample ID") +
   theme_minimal()+
   ylim(0, NA)
@@ -276,9 +276,9 @@ for (ampliation in ampliation_values) {
 ggplot(results, aes(x = ampliation, y = MinValue, color = factor(SampleID), group = SampleID)) +
   geom_line() +
   geom_point() +
-  labs(title = "Low-Decile Intensity vs ROI Expansion (Cluster 14)",
+  labs(title = "Minimum Intensity vs ROI Expansion (Cluster 14)",
        x = "Expansion (%)",
-       y = "Minimum Value",
+       y = "Minimum Value (5th Percentile of Intensities)",
        color = "Sample ID") +
   theme_minimal()+
   ylim(0, NA)
@@ -318,9 +318,9 @@ mean_results <- results %>%
 ggplot(mean_results, aes(x = ampliation, y = MeanMinValue, color = factor(cluster), group = cluster)) +
   geom_line() +
   geom_point() +
-  labs(title = "Mean Low-Decile Intensity vs ROI Expansion per Cluster",
+  labs(title = "Mean Minimum Intensity vs ROI Expansion per Cluster",
        x = "Expansion (%)",
-       y = "Mean Minimum Value",
+       y = "Mean Minimum Value (5th percentiles)",
        color = "Cluster") +
   theme_minimal()+
   ylim(0, 800)

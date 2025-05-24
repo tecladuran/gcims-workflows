@@ -1,14 +1,11 @@
 Cluster-Specific Baseline Correction in GC-IMS Data
 ================
 Tecla Duran Fort
-2025-04-13
+2025-05-24
 
 # 0. Preprocessing
 
 ## 0.1. Setup
-
-Enable or disable parallelization based on the need for detailed error
-reporting or faster execution.
 
 ## 0.2. Dataset Creation
 
@@ -236,15 +233,15 @@ expansion** to capture the baseline **without excessive enlargement**.
 
 ### Visualisation In Specific Clusters
 
-<img src="baseline_correction_files/figure-gfm/unnamed-chunk-3-1.png" style="display: block; margin: auto;" />
+![](baseline_correction_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
 
-<img src="baseline_correction_files/figure-gfm/optimising-size-1.png" style="display: block; margin: auto;" />
+![](baseline_correction_files/figure-gfm/optimising-size-1.png)<!-- -->
 
 ### Deciding a common ampliation
 
-<img src="baseline_correction_files/figure-gfm/unnamed-chunk-4-1.png" style="display: block; margin: auto;" />
+![](baseline_correction_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
 
-Based on these plots, we will adopt the **200%** ampliation value (i.e.,
+Based on these plots, we will adopt the **200%** expansion value (i.e.,
 double the size of the ROI), as most clusters appear to have stabilized
 at a value that we will consider the baseline.
 
@@ -356,4 +353,4 @@ residual volume estimation, imputation, and subtraction.
 We can compare the imputed vs. baseline-corrected values across
 clusters:
 
-<img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-1.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-2.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-3.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-4.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-5.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-6.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-7.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-8.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-9.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-10.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-11.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-12.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-13.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-14.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-15.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-16.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-17.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-18.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-19.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-20.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-21.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-22.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-23.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-24.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-25.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-26.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-27.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-28.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-29.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-30.png" style="display: block; margin: auto;" /><img src="baseline_correction_files/figure-gfm/plot-corrected-comparison-31.png" style="display: block; margin: auto;" />
+![](baseline_correction_files/figure-gfm/plot-corrected-comparison-1.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-2.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-3.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-4.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-5.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-6.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-7.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-8.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-9.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-10.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-11.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-12.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-13.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-14.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-15.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-16.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-17.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-18.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-19.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-20.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-21.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-22.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-23.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-24.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-25.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-26.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-27.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-28.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-29.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-30.png)<!-- -->![](baseline_correction_files/figure-gfm/plot-corrected-comparison-31.png)<!-- -->
