@@ -296,17 +296,15 @@ justifying the separate analysis of these two factors.
 2.  **Estimation of residual variance**:
     - The remaining variance is approximated as:
 
-        $$
-        1 - \left(R^2_{\text{elapsed time}} + R^2_{\text{batch number}}\right)
-        $$
+$$
+1 - \left(R^2_{\text{elapsed time}} + R^2_{\text{batch number}}\right)
+$$
 
-    - This residual variance captures the portion of variability not
-      explained by the modeled variables, which may include instrumental
-      noise, uncontrolled experimental factors, or latent sources of
-      variability.
+This residual variance captures the portion of variability not explained by the modeled variables, which may include instrumental noise, uncontrolled experimental factors, or latent sources of variability.
       
 
 ## 4.3. Visualization of Explained Variance
+
 
 We present the results in a stacked bar chart, where each cluster is
 represented by a bar. The different sections of each bar correspond to
