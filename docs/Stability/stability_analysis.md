@@ -295,9 +295,9 @@ justifying the separate analysis of these two factors.
       in cluster intensity explained by each variable.
 2.  **Estimation of residual variance**:
     - The remaining variance is approximated as:
-      $$
-      1 - (R^2_{\text{elapsed time}} + R^2_{\text{batch number}})
-      $$
+$$
+1 - (R^2_{\text{elapsed time}} + R^2_{\text{batch number}})
+$$
     - This residual variance captures the portion of variability not
       explained by the modeled variables, which may include instrumental
       noise, uncontrolled experimental factors, or latent sources of
