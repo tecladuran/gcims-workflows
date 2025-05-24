@@ -1,8 +1,8 @@
-Removing External Variability from GC-IMS Data: A Linear
-Orthogonalization Approach
+Removing External Variability from GC-IMS Data: Linear Orthogonalization
+Approach
 ================
 Tecla Duran Fort
-2025-05-05
+2025-05-24
 
 Load Peak Table
 
@@ -150,7 +150,7 @@ The function returns both the corrected data and the removed projection
 component.
 
 ``` r
-correction <- function(data, variable){
+orthogonal_correction <- function(data, variable){
   data_mean <- colMeans(data)
   variable_mean <- mean(variable)
   data_centered <- sweep(data, 2, data_mean, "-")
@@ -178,11 +178,11 @@ projections for further visualization and analysis.
 intensities <- df %>% dplyr::select(starts_with("Cluster"))
 
 # Correction for elapsed time
-corr_time <- correction(intensities, df$elapsed_time)
+corr_time <- orthogonal_correction(intensities, df$elapsed_time)
 intensities_time_corr <- corr_time$corrected
 
 # Correction for batch
-corr_batch <- correction(intensities_time_corr, df$batch)
+corr_batch <- orthogonal_correction(intensities_time_corr, df$batch)
 intensities_final <- corr_batch$corrected
 
 # Components for visualization
@@ -206,14 +206,14 @@ To assess the stability of the correction with respect to the order of
 application, we also visualize the results of applying the same
 procedure in reverse (first batch, then elapsed time).
 
-![](linear_correction_files/figure-latex/correction-visualization-1.png)<!-- -->![](linear_correction_files/figure-latex/correction-visualization-2.png)<!-- -->![](linear_correction_files/figure-latex/correction-visualization-3.png)<!-- -->![](linear_correction_files/figure-latex/correction-visualization-4.png)<!-- -->![](linear_correction_files/figure-latex/correction-visualization-5.png)<!-- -->
+![](orthogonal_correction_files/figure-latex/correction-visualization-1.png)<!-- -->![](orthogonal_correction_files/figure-latex/correction-visualization-2.png)<!-- -->![](orthogonal_correction_files/figure-latex/correction-visualization-3.png)<!-- -->![](orthogonal_correction_files/figure-latex/correction-visualization-4.png)<!-- -->![](orthogonal_correction_files/figure-latex/correction-visualization-5.png)<!-- -->
 
 After visualizing the sequential correction (elapsed time followed by
 batch), we now apply the same procedure in reverse order. This serves to
 confirm whether the correction is stable and order-independent for this
 dataset.
 
-![](linear_correction_files/figure-latex/inverse-1.png)<!-- -->![](linear_correction_files/figure-latex/inverse-2.png)<!-- -->![](linear_correction_files/figure-latex/inverse-3.png)<!-- -->![](linear_correction_files/figure-latex/inverse-4.png)<!-- -->![](linear_correction_files/figure-latex/inverse-5.png)<!-- -->
+![](orthogonal_correction_files/figure-latex/inverse-1.png)<!-- -->![](orthogonal_correction_files/figure-latex/inverse-2.png)<!-- -->![](orthogonal_correction_files/figure-latex/inverse-3.png)<!-- -->![](orthogonal_correction_files/figure-latex/inverse-4.png)<!-- -->![](orthogonal_correction_files/figure-latex/inverse-5.png)<!-- -->
 
 The plots below demonstrate that the final corrected signal remains
 consistent, regardless of the order in which external effects are
@@ -266,7 +266,7 @@ two principal components, colored by elapsed time.
 
 <div class="figure" style="text-align: center">
 
-<img src="linear_correction_files/figure-latex/pca-originals-1.png" alt="PCA of original data colored by elapsed time (left) and by batch (right)"  />
+<img src="orthogonal_correction_files/figure-latex/pca-originals-1.png" alt="PCA of original data colored by elapsed time (left) and by batch (right)"  />
 <p class="caption">
 PCA of original data colored by elapsed time (left) and by batch (right)
 </p>
@@ -275,7 +275,7 @@ PCA of original data colored by elapsed time (left) and by batch (right)
 
 <div class="figure" style="text-align: center">
 
-<img src="linear_correction_files/figure-latex/pca-variance-distribution-1.png" alt="Variance explained by each principal component (original data)"  />
+<img src="orthogonal_correction_files/figure-latex/pca-variance-distribution-1.png" alt="Variance explained by each principal component (original data)"  />
 <p class="caption">
 Variance explained by each principal component (original data)
 </p>
@@ -289,7 +289,7 @@ into this fixed PCA space for comparison.
 
 <div class="figure" style="text-align: center">
 
-<img src="linear_correction_files/figure-latex/pca-correction-elapsed-fixed-1.png" alt="Projection before (left) and after (right) elapsed time correction, both colored by elapsed time"  />
+<img src="orthogonal_correction_files/figure-latex/pca-correction-elapsed-fixed-1.png" alt="Projection before (left) and after (right) elapsed time correction, both colored by elapsed time"  />
 <p class="caption">
 Projection before (left) and after (right) elapsed time correction, both
 colored by elapsed time
@@ -303,7 +303,7 @@ projected into the same PCA space and colored by batch number.
 
 <div class="figure" style="text-align: center">
 
-<img src="linear_correction_files/figure-latex/pca-correction-batch-1.png" alt="Projection before (left) and after (right) batch correction, both colored by batch"  />
+<img src="orthogonal_correction_files/figure-latex/pca-correction-batch-1.png" alt="Projection before (left) and after (right) batch correction, both colored by batch"  />
 <p class="caption">
 Projection before (left) and after (right) batch correction, both
 colored by batch
@@ -316,7 +316,7 @@ original data. Both datasets are projected into the same PCA space.
 
 <div class="figure" style="text-align: center">
 
-<img src="linear_correction_files/figure-latex/pca-correction-full-1.png" alt="Projection before (left) and after (right) full correction (no coloring)"  />
+<img src="orthogonal_correction_files/figure-latex/pca-correction-full-1.png" alt="Projection before (left) and after (right) full correction (no coloring)"  />
 <p class="caption">
 Projection before (left) and after (right) full correction (no coloring)
 </p>
@@ -330,7 +330,7 @@ explained variance is also included.
 
 <div class="figure" style="text-align: center">
 
-<img src="linear_correction_files/figure-latex/pca-corrected-plot-1.png" alt="PCA of corrected data colored by elapsed time (left) and by batch (right)"  />
+<img src="orthogonal_correction_files/figure-latex/pca-corrected-plot-1.png" alt="PCA of corrected data colored by elapsed time (left) and by batch (right)"  />
 <p class="caption">
 PCA of corrected data colored by elapsed time (left) and by batch
 (right)
@@ -340,7 +340,7 @@ PCA of corrected data colored by elapsed time (left) and by batch
 
 <div class="figure" style="text-align: center">
 
-<img src="linear_correction_files/figure-latex/pca-variance-distribution-corr-1.png" alt="Variance explained by each principal component (corrected data)"  />
+<img src="orthogonal_correction_files/figure-latex/pca-variance-distribution-corr-1.png" alt="Variance explained by each principal component (corrected data)"  />
 <p class="caption">
 Variance explained by each principal component (corrected data)
 </p>

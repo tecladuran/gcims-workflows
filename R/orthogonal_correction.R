@@ -1,4 +1,4 @@
-correction <- function(data, variable){
+orthogonal_correction <- function(data, variable){
   data_mean <- colMeans(data)
   variable_mean <- mean(variable)
   data_centered <- sweep(data, 2, data_mean, "-")

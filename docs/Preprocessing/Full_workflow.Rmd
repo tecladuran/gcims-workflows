@@ -39,7 +39,7 @@ Creation of the dataset from the specified directory and files.
 ```{r dataset-creation, message=FALSE, warning=FALSE, results='hide'}
 # Create annotations dataframe
 samples_directory <- "/storage/projects/TargetML/Urine_Pool"
-annotations <- read.csv(file.path(samples_directory, "annotations.csv"))
+annotations <- read.csv("/storage/users/tduran/Projects/gcims-workflows/data/annotations_pool.csv")
 annotations <- annotations[which(annotations$Class=="Urine_pool"),]
 
 # Create GCIMS dataset object

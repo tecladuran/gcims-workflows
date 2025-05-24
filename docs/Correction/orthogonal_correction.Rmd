@@ -1,18 +1,21 @@
 ---
-title: "Removing External Variability from GC-IMS Data: A Linear Orthogonalization Approach"
+title: "Removing External Variability from GC-IMS Data: Linear Orthogonalization Approach"
 author: "Tecla Duran Fort"
 date: "`r Sys.Date()`"
 output:
   pdf_document:
-    toc: true
-    fig_caption: true
-always_allow_html: true
+    toc: yes
+    fig_caption: yes
+  html_document:
+    toc: yes
+    df_print: paged
+always_allow_html: yes
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
-                      fig.path = "linear_correction_files/figure-latex/")
+                      fig.path = "orthogonal_correction_files/figure-latex/")
 library(ggplot2)
 library(dplyr)
 library(tidyr)
@@ -98,7 +101,7 @@ The following function implements a linear orthogonalization procedure that remo
 The function returns both the corrected data and the removed projection component.
 
 ```{r orth-function}
-correction <- function(data, variable){
+orthogonal_correction <- function(data, variable){
   data_mean <- colMeans(data)
   variable_mean <- mean(variable)
   data_centered <- sweep(data, 2, data_mean, "-")
@@ -123,11 +126,11 @@ The code below applies the corrections and stores the intermediate projections f
 intensities <- df %>% dplyr::select(starts_with("Cluster"))
 
 # Correction for elapsed time
-corr_time <- correction(intensities, df$elapsed_time)
+corr_time <- orthogonal_correction(intensities, df$elapsed_time)
 intensities_time_corr <- corr_time$corrected
 
 # Correction for batch
-corr_batch <- correction(intensities_time_corr, df$batch)
+corr_batch <- orthogonal_correction(intensities_time_corr, df$batch)
 intensities_final <- corr_batch$corrected
 
 # Components for visualization
@@ -226,10 +229,10 @@ After visualizing the sequential correction (elapsed time followed by batch), we
 ```{r inverse, fig.width=6, fig.height=2, echo=FALSE}
 
 # Apply corrections in reverse order
-corr_batch_first <- correction(intensities, df$batch)
+corr_batch_first <- orthogonal_correction(intensities, df$batch)
 intensities_batch_first <- corr_batch_first$corrected
 
-corr_time_second <- correction(intensities_batch_first, df$elapsed_time)
+corr_time_second <- orthogonal_correction(intensities_batch_first, df$elapsed_time)
 intensities_inverse <- corr_time_second$corrected
 
 # Intermediate projections

@@ -21,7 +21,7 @@ library(tibble)
 library(reshape2)
 library(ggpubr)
 
-# Load GC-IMS tools (including correction() function)
+# Load GC-IMS tools (including orthogonal_correction() function)
 source("../../load_gcims_tools.R")
 ```
 
@@ -42,10 +42,10 @@ df <- read.csv("../../data/peak_table_var.csv")
 intensities <- df %>% select(starts_with("Cluster"))
 
 # Apply sequential correction
-corr_time <- correction(intensities, df$elapsed_time)
+corr_time <- orthogonal_correction(intensities, df$elapsed_time)
 intensities_time_corr <- corr_time$corrected
 
-corr_batch <- correction(intensities_time_corr, df$batch)
+corr_batch <- orthogonal_correction(intensities_time_corr, df$batch)
 intensities_final <- corr_batch$corrected
 ```
 

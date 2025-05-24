@@ -118,7 +118,7 @@ evaluate_auc <- function(df_mod, meta, seed=NULL) {
   
   auc_raw <- compute_auc_plsda(X_raw, y, seed=seed)
 
-  X_corr <- correction(correction(X_raw, meta$elapsed_time)$corrected,
+  X_corr <- orthogonal_correction(orthogonal_correction(X_raw, meta$elapsed_time)$corrected,
                        meta$batch)$corrected
 
   auc_corr <- compute_auc_plsda(X_corr, y, seed=seed)

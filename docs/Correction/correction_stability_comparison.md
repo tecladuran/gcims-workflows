@@ -1,7 +1,7 @@
 Comparison of Raw and Corrected GC-IMS Data
 ================
 Tecla Duran Fort
-2025-04-21
+2025-05-24
 
 ## 1. Introduction
 
@@ -21,14 +21,14 @@ unwanted variability after correction.
 ## 2. Apply Correction
 
 ``` r
-df <- read.csv("../data/peak_table_var.csv")
+df <- read.csv("../../data/peak_table_var.csv")
 intensities <- df %>% select(starts_with("Cluster"))
 
 # Apply sequential correction
-corr_time <- correction(intensities, df$elapsed_time)
+corr_time <- orthogonal_correction(intensities, df$elapsed_time)
 intensities_time_corr <- corr_time$corrected
 
-corr_batch <- correction(intensities_time_corr, df$batch)
+corr_batch <- orthogonal_correction(intensities_time_corr, df$batch)
 intensities_final <- corr_batch$corrected
 ```
 
@@ -36,7 +36,7 @@ intensities_final <- corr_batch$corrected
 
 ## 3. Relative Standard Deviation (RSD)
 
-<img src="Comparison_corrected_files/figure-latex/rsd-comparison-1.png" style="display: block; margin: auto;" />
+![](Comparison_corrected_files/figure-latex/rsd-comparison-1.png)<!-- -->
 
 ------------------------------------------------------------------------
 
@@ -65,7 +65,7 @@ with acquisition order and batch improves overall signal reliability.
 
 ## 5. Explained Variance by External Factors
 
-<img src="Comparison_corrected_files/figure-latex/explained-variance-1.png" style="display: block; margin: auto;" />
+![](Comparison_corrected_files/figure-latex/explained-variance-1.png)<!-- -->
 
 ------------------------------------------------------------------------
 
