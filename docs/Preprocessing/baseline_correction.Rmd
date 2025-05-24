@@ -1,7 +1,7 @@
 ---
 title: "Cluster-Specific Baseline Correction in GC-IMS Data"
 author: "Tecla Duran Fort"
-date: "2025-04-13"
+date: "`r Sys.Date()`"
 output: 
   pdf_document:
     toc: true
@@ -25,10 +25,7 @@ library(dplyr)
 library(tidyr)
 library(tibble)
 source("../../load_gcims_tools.R")
-# devtools::load_all("/storage/users/emartin/GCIMS")
 ```
-
-Enable or disable parallelization based on the need for detailed error reporting or faster execution.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 # register(SerialParam(progressbar = show_progress_bar()), default = TRUE) # Disable parallelization (useful for better error reporting)
@@ -247,8 +244,8 @@ for (ampliation in ampliation_values) {
 ggplot(results, aes(x = ampliation, y = MinValue, color = factor(SampleID), group = SampleID)) +
   geom_line() +
   geom_point() +
-  labs(title = "Minimum Value vs Ampliation (Cluster 1)",
-       x = "Ampliation (%)",
+  labs(title = "Low-Decile Intensity vs ROI Expansion (Cluster 1)",
+       x = "Expansion (%)",
        y = "Minimum Value",
        color = "Sample ID") +
   theme_minimal()+
@@ -279,8 +276,8 @@ for (ampliation in ampliation_values) {
 ggplot(results, aes(x = ampliation, y = MinValue, color = factor(SampleID), group = SampleID)) +
   geom_line() +
   geom_point() +
-  labs(title = "Minimum Value vs Ampliation (Cluster 14)",
-       x = "Ampliation (%)",
+  labs(title = "Low-Decile Intensity vs ROI Expansion (Cluster 14)",
+       x = "Expansion (%)",
        y = "Minimum Value",
        color = "Sample ID") +
   theme_minimal()+
@@ -321,8 +318,8 @@ mean_results <- results %>%
 ggplot(mean_results, aes(x = ampliation, y = MeanMinValue, color = factor(cluster), group = cluster)) +
   geom_line() +
   geom_point() +
-  labs(title = "Mean Minimum Value vs Ampliation per Cluster",
-       x = "Ampliation (%)",
+  labs(title = "Mean Low-Decile Intensity vs ROI Expansion per Cluster",
+       x = "Expansion (%)",
        y = "Mean Minimum Value",
        color = "Cluster") +
   theme_minimal()+
@@ -331,7 +328,7 @@ ggplot(mean_results, aes(x = ampliation, y = MeanMinValue, color = factor(cluste
 ```
 
 
-Based on these plots, we will adopt the **200%** ampliation value (i.e., double the size of the ROI), as most clusters appear to have stabilized at a value that we will consider the baseline.
+Based on these plots, we will adopt the **200%** expansion value (i.e., double the size of the ROI), as most clusters appear to have stabilized at a value that we will consider the baseline.
 
 
 ## 1.2. Correcting Baseline
