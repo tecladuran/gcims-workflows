@@ -294,7 +294,8 @@ justifying the separate analysis of these two factors.
     - The corresponding $R^2$ values indicate the proportion of variance
       in cluster intensity explained by each variable.
 2.  **Estimation of residual variance**:
-    - The remaining variance is approximated as: $$
+    - The remaining variance is approximated as:
+      $$
       1 - (R^2_{\text{elapsed time}} + R^2_{\text{batch number}})
       $$
     - This residual variance captures the portion of variability not
