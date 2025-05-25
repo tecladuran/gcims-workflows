@@ -2,10 +2,12 @@
 title: "Evaluating the Impact of External Parameter Orthogonalisation on Simulated Group Discrimination"
 author: "Tecla Duran Fort"
 date: "`r Sys.Date()`"
+always_allow_html: true
 output:
   pdf_document:
     toc: true
     fig_caption: true
+    
 ---
 
 ```{r setup, include=FALSE}
@@ -206,7 +208,7 @@ ggplot(robust_results, aes(x = Raw, y = Corrected)) +
   geom_point(color = "#1D3557", alpha = 0.7, size = 2) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
   theme_minimal(base_size = 12) +
-  labs(title = paste("Raw vs Corrected AUCs across 50 runs (", target_cluster, ")"),
+  labs(title = paste("Raw vs Corrected AUCs across 200 runs (", target_cluster, ")"),
        x = "Raw AUC", y = "Corrected AUC")
 ```
 
@@ -239,6 +241,9 @@ results_global <- purrr::map_dfr(clusters, function(cl) {
 ### Summary Statistics by Perturbation Level
 
 ```{r global-stats-summary}
+library(knitr)
+library(kableExtra)
+
 summary_global <- results_global %>%
   dplyr::group_by(Perturbation) %>%
   dplyr::summarise(
@@ -247,7 +252,9 @@ summary_global <- results_global %>%
     prop_improved = mean(Corrected > Raw)
   )
 
-summary_global
+summary_global %>%
+  kable(digits = 4, caption = "Summary of Improvement After Correction") %>%
+  kable_styling(full_width = FALSE, position = "center", bootstrap_options = c("striped", "hover"))
 ```
 
 
@@ -286,8 +293,7 @@ prob_raw <- pred_raw[, classes[2]]
 roc_raw <- roc(response = y_test, predictor = prob_raw, levels = classes)
 auc_raw <- auc(roc_raw)
 
-# EPO correction
-X_corr <- correction(correction(X_raw, meta$elapsed_time)$corrected,
+X_corr <- orthogonal_correction(orthogonal_correction(X_raw, meta$elapsed_time)$corrected,
                      meta$batch)$corrected
 
 X_train_corr <- X_corr[train_idx, , drop = FALSE]

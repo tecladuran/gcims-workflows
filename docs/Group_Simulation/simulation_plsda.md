@@ -2,7 +2,7 @@ Evaluating the Impact of External Parameter Orthogonalisation on
 Simulated Group Discrimination
 ================
 Tecla Duran Fort
-2025-05-05
+2025-05-25
 
 # 1. Introduction
 
@@ -62,7 +62,7 @@ ggplot2::ggplot(df_long, ggplot2::aes(x = Sample, y = Value, color = Variable)) 
   ggplot2::theme(legend.position = "bottom")
 ```
 
-![](simulation_plsda_files/figure-gfm/plot-alignment-1.png)<!-- -->
+<img src="simulation_plsda_files/figure-gfm/plot-alignment-1.png" style="display: block; margin: auto;" />
 
 # 3. Define Simulation and Evaluation Functions
 
@@ -165,7 +165,7 @@ unique(auc_df$Cluster) %>% purrr::walk(function(cl) {
 })
 ```
 
-![](simulation_plsda_files/figure-gfm/plot-results-1.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-2.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-3.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-4.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-5.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-6.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-7.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-8.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-9.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-10.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-11.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-12.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-13.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-14.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-15.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-16.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-17.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-18.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-19.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-20.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-21.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-22.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-23.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-24.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-25.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-26.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-27.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-28.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-29.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-30.png)<!-- -->![](simulation_plsda_files/figure-gfm/plot-results-31.png)<!-- -->
+<img src="simulation_plsda_files/figure-gfm/plot-results-1.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-2.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-3.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-4.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-5.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-6.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-7.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-8.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-9.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-10.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-11.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-12.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-13.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-14.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-15.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-16.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-17.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-18.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-19.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-20.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-21.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-22.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-23.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-24.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-25.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-26.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-27.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-28.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-29.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-30.png" style="display: block; margin: auto;" /><img src="simulation_plsda_files/figure-gfm/plot-results-31.png" style="display: block; margin: auto;" />
 
 # 6. Robustness Check
 
@@ -198,11 +198,11 @@ ggplot(robust_results, aes(x = Raw, y = Corrected)) +
   geom_point(color = "#1D3557", alpha = 0.7, size = 2) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
   theme_minimal(base_size = 12) +
-  labs(title = paste("Raw vs Corrected AUCs across 50 runs (", target_cluster, ")"),
+  labs(title = paste("Raw vs Corrected AUCs across 200 runs (", target_cluster, ")"),
        x = "Raw AUC", y = "Corrected AUC")
 ```
 
-![](simulation_plsda_files/figure-gfm/unnamed-chunk-1-1.png)<!-- -->
+<img src="simulation_plsda_files/figure-gfm/unnamed-chunk-1-1.png" style="display: block; margin: auto;" />
 
 ## Global Validation Across Clusters and Perturbation Levels
 
@@ -234,6 +234,9 @@ results_global <- purrr::map_dfr(clusters, function(cl) {
 ### Summary Statistics by Perturbation Level
 
 ``` r
+library(knitr)
+library(kableExtra)
+
 summary_global <- results_global %>%
   dplyr::group_by(Perturbation) %>%
   dplyr::summarise(
@@ -242,23 +245,328 @@ summary_global <- results_global %>%
     prop_improved = mean(Corrected > Raw)
   )
 
-summary_global
+summary_global %>%
+  kable(digits = 4, caption = "Summary of Improvement After Correction") %>%
+  kable_styling(full_width = FALSE, position = "center", bootstrap_options = c("striped", "hover"))
 ```
 
-    ## # A tibble: 21 × 4
-    ##    Perturbation  p_value mean_gain prop_improved
-    ##           <dbl>    <dbl>     <dbl>         <dbl>
-    ##  1         0    8.31e- 1  -0.00297         0.484
-    ##  2         0.05 1.86e- 4   0.0174          0.594
-    ##  3         0.1  2.75e-24   0.0684          0.739
-    ##  4         0.15 2.07e-28   0.0957          0.742
-    ##  5         0.2  1.68e-29   0.101           0.758
-    ##  6         0.25 3.25e-33   0.116           0.790
-    ##  7         0.3  4.08e-32   0.108           0.787
-    ##  8         0.35 1.40e-27   0.0943          0.739
-    ##  9         0.4  2.17e-28   0.0849          0.755
-    ## 10         0.45 1.03e-24   0.0802          0.710
-    ## # ℹ 11 more rows
+<table class="table table-striped table-hover" style="width: auto !important; margin-left: auto; margin-right: auto;">
+<caption>
+Summary of Improvement After Correction
+</caption>
+<thead>
+<tr>
+<th style="text-align:right;">
+Perturbation
+</th>
+<th style="text-align:right;">
+p_value
+</th>
+<th style="text-align:right;">
+mean_gain
+</th>
+<th style="text-align:right;">
+prop_improved
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right;">
+0.00
+</td>
+<td style="text-align:right;">
+0.6633
+</td>
+<td style="text-align:right;">
+-0.0018
+</td>
+<td style="text-align:right;">
+0.4806
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.05
+</td>
+<td style="text-align:right;">
+0.0002
+</td>
+<td style="text-align:right;">
+0.0153
+</td>
+<td style="text-align:right;">
+0.6032
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.10
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0573
+</td>
+<td style="text-align:right;">
+0.6806
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.15
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0878
+</td>
+<td style="text-align:right;">
+0.7387
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.20
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.1022
+</td>
+<td style="text-align:right;">
+0.7806
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.25
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.1103
+</td>
+<td style="text-align:right;">
+0.7935
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.30
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0945
+</td>
+<td style="text-align:right;">
+0.7645
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.35
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0928
+</td>
+<td style="text-align:right;">
+0.7387
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.40
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0830
+</td>
+<td style="text-align:right;">
+0.7355
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.45
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0871
+</td>
+<td style="text-align:right;">
+0.7452
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.50
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0689
+</td>
+<td style="text-align:right;">
+0.7581
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.55
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0572
+</td>
+<td style="text-align:right;">
+0.6613
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.60
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0566
+</td>
+<td style="text-align:right;">
+0.6677
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.65
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0593
+</td>
+<td style="text-align:right;">
+0.6742
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.70
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0458
+</td>
+<td style="text-align:right;">
+0.6742
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.75
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0357
+</td>
+<td style="text-align:right;">
+0.5677
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.80
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0262
+</td>
+<td style="text-align:right;">
+0.6290
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.85
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0308
+</td>
+<td style="text-align:right;">
+0.6290
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.90
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0323
+</td>
+<td style="text-align:right;">
+0.5645
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.95
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0332
+</td>
+<td style="text-align:right;">
+0.5806
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+1.00
+</td>
+<td style="text-align:right;">
+0.0000
+</td>
+<td style="text-align:right;">
+0.0192
+</td>
+<td style="text-align:right;">
+0.5258
+</td>
+</tr>
+</tbody>
+</table>
 
 # 7. Latent Structure Visualisation Before and After Correction
 
@@ -297,8 +605,7 @@ prob_raw <- pred_raw[, classes[2]]
 roc_raw <- roc(response = y_test, predictor = prob_raw, levels = classes)
 auc_raw <- auc(roc_raw)
 
-# EPO correction
-X_corr <- correction(correction(X_raw, meta$elapsed_time)$corrected,
+X_corr <- orthogonal_correction(orthogonal_correction(X_raw, meta$elapsed_time)$corrected,
                      meta$batch)$corrected
 
 X_train_corr <- X_corr[train_idx, , drop = FALSE]
@@ -321,7 +628,7 @@ legend("bottomright",
        col = c("#E63946", "#1D3557"), lwd = 2)
 ```
 
-![](simulation_plsda_files/figure-gfm/roc-curve-cluster24-1.png)<!-- -->
+<img src="simulation_plsda_files/figure-gfm/roc-curve-cluster24-1.png" style="display: block; margin: auto;" />
 
 ------------------------------------------------------------------------
 
@@ -353,7 +660,7 @@ ggplot(latent_scores_raw, aes(x = LV1, y = LV2, color = Group, shape = Split)) +
   theme(legend.position = "bottom")
 ```
 
-![](simulation_plsda_files/figure-gfm/plsda-raw-latent-space-1.png)<!-- -->
+<img src="simulation_plsda_files/figure-gfm/plsda-raw-latent-space-1.png" style="display: block; margin: auto;" />
 
 ------------------------------------------------------------------------
 
@@ -385,4 +692,4 @@ ggplot(latent_scores, aes(x = LV1, y = LV2, color = Group, shape = Split)) +
   theme(legend.position = "bottom")
 ```
 
-![](simulation_plsda_files/figure-gfm/plsda-corrected-latent-space-1.png)<!-- -->
+<img src="simulation_plsda_files/figure-gfm/plsda-corrected-latent-space-1.png" style="display: block; margin: auto;" />
