@@ -1,10 +1,10 @@
-# 📚 GC-IMS Workflows — Documentation Overview
+# GC-IMS Workflows — Documentation Overview
 
 ---
 
-## 📂 Contents
+## Contents
 
-### 🔬 [Preprocessing](Preprocessing/)
+### [Preprocessing](Preprocessing/)
 
 - **[Full Workflow: From Raw Data to Peak Table (Markdown)](Preprocessing/Full_workflow.md)**  
   Complete pipeline from raw GC-IMS signals to a processed and corrected peak table.  
@@ -17,21 +17,21 @@
 
 ---
 
-### 📈 [Linearity](Linearity/)
+### [Linearity](Linearity/)
 - **[Linearity Report (Markdown)](Linearity/linearity_report.md)**  
   Analyzes signal drift within and across batches using elapsed time, batch index, and storage time.  
   *Outcome:* Supports the use of batch as an ordinal temporal proxy.
 
 ---
 
-### 📊 [Stability](Stability/)
+### [Stability](Stability/)
 - **[Stability Analysis (Markdown)](Stability/stability_analysis.md)**  
   Quantifies variability using RSD and variance explained by external factors.  
   *Result:* Only ~23% of clusters are stable (<20% RSD).
 
 ---
 
-### 🧮 [Correction](Correction/)
+### [Correction](Correction/)
 - **[EPO Correction Report (Markdown)](Correction/linear_correction.md)**  
   Implements linear orthogonalization to remove variability due to elapsed time and batch.  
   *Validation:* PCA and explained variance analysis before/after correction.
@@ -42,7 +42,7 @@
 
 ---
 
-### 🧪 [Group Simulation](Group_Simulation/)
+### [Group Simulation](Group_Simulation/)
 - **[Simulation PLS-DA Report (Markdown)](Group_Simulation/simulation_plsda.md)**  
   Simulates subtle biomarker shifts and compares classification performance before and after correction.  
   *Metric:* AUC (PLS-DA).  
@@ -50,7 +50,7 @@
 
 ---
 
-## 👩‍🔬 Author
+## Author
 
 **Tecla Duran Fort**  
 Universitat de Barcelona
