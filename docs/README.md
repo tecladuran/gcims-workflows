@@ -10,7 +10,7 @@
   Complete pipeline from raw GC-IMS signals to a processed and corrected peak table.  
   *Includes:* Filtering, alignment, peak detection, clustering, imputation, and baseline correction.
 
-- **[Baseline Correction (PDF)](Preprocessing/baseline_correction.pdf)**  
+- **[Baseline Correction (PDF)](Preprocessing/baseline_correction.md)**  
   Corrects overestimation in peak areas due to background signal.  
   *Method:* Cluster-specific residual volume estimation.
 
