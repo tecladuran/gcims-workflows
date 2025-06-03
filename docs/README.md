@@ -32,7 +32,7 @@
 ---
 
 ### [Correction](Correction/)
-- **[EPO Correction Report](Correction/linear_correction.md)**  
+- **[Orthogonal Correction Report](Correction/orthogonal_correction.md)**  
   Implements linear orthogonalization to remove variability due to elapsed time and batch.  
   *Validation:* PCA and explained variance analysis before/after correction.
 
