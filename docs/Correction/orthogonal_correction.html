@@ -638,7 +638,7 @@ Object.defineProperty(e,"__esModule",{value:!0}),e.mhchemParser=void 0;var r=fun
 <h1 id="removing-external-variability-from-gc-ims-data-linear-orthogonalization-approach">Removing
 External Variability from GC-IMS Data: Linear Orthogonalization
 Approach</h1>
-<p>Tecla Duran Fort 2025-05-24</p>
+<p>Tecla Duran Fort 2025-06-04</p>
 <p>Load Peak Table</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> <span class="fu">read.csv</span>(<span class="st">&quot;../../data/peak_table_var.csv&quot;</span>)</span></code></pre></div>
 <h2 id="id_1-introduction">1. Introduction</h2>
@@ -658,101 +658,106 @@ of the total variance. This motivates the use of orthogonalization
 techniques to isolate the relevant chemical signal from these external
 influences.</p>
 <h2 id="id_2-theoretical-background">2. Theoretical Background</h2>
-<p>In line with the theoretical framework proposed by Roger et
-al. (2003), the signal space <span class="math inline">\(\mathcal{S}\)</span> can be decomposed as:</p>
+<p>Orthogonal projection methods are commonly used in chemometrics and
+metabolomics to remove unwanted variability from experimental data.
+According to Roger et al. (2003), the signal space <span class="math inline">\(\mathcal{S}\)</span> can be decomposed into three
+orthogonal components:</p>
 <p><span class="math display">\[
 \mathcal{S} = \mathcal{C} \oplus \mathcal{G} \oplus \mathcal{R}
 \]</span></p>
-<p>where:</p>
+<p>where <span class="math inline">\(\mathcal{C}\)</span> contains
+meaningful chemical information, <span class="math inline">\(\mathcal{G}\)</span> represents systematic effects
+from external variables (e.g., time, batch), and <span class="math inline">\(\mathcal{R}\)</span> captures residual noise.</p>
+<p>The aim is to estimate <span class="math inline">\(\mathcal{G}\)</span> and project the data onto its
+orthogonal complement, thereby removing the external component while
+preserving the informative signal. Roger et al. (2003) describe two main
+strategies to estimate this subspace:</p>
 <ul>
-<li><span class="math inline">\(\mathcal{C}\)</span> corresponds to the
-informative signal related to meaningful chemical variation,</li>
-<li><span class="math inline">\(\mathcal{G}\)</span> contains systematic
-perturbations associated with external parameters (e.g., temperature,
-batch, time),</li>
-<li><span class="math inline">\(\mathcal{R}\)</span> captures noise and
-other residual effects, including potential covariances.</li>
+<li>by identifying the part of <span class="math inline">\(X\)</span>
+that is orthogonal to the response variable <span class="math inline">\(Y\)</span> (as in OSC or O-PLS),</li>
+<li>or by directly modelling the subspace associated with the external
+parameter.</li>
 </ul>
-<p>Methods such as <strong>External Parameter Orthogonalization
-(EPO)</strong> aim to isolate and remove <span class="math inline">\(\mathcal{G}\)</span> by projecting the data matrix
-<span class="math inline">\(X\)</span> onto the orthogonal complement of
-the subspace spanned by external influences. Mathematically, if an
-estimate <span class="math inline">\(\hat{Q}\)</span> of the projection
-matrix onto <span class="math inline">\(\mathcal{G}\)</span> is
-available, the corrected data can be computed as:</p>
+<p>In the present project, we follow the second approach.</p>
+<p>From a matrix <span class="math inline">\(X \in \mathbb{R}^{n \times
+p}\)</span>, one can determine and use orthogonal projections (OPs) in
+the <strong>sample space</strong> or in the <strong>signal
+space</strong>:</p>
+<ul>
+<li>An OP in the <strong>sample space</strong> is an <span class="math inline">\(n \times n\)</span> matrix, which acts on the
+<strong>rows</strong> of <span class="math inline">\(X\)</span> and
+consequently <strong>left multiplies</strong> <span class="math inline">\(X\)</span> .</li>
+<li>An OP in the <strong>signal space</strong> is a <span class="math inline">\(p \times p\)</span> matrix, which acts on the
+<strong>columns</strong> of <span class="math inline">\(X\)</span> and
+consequently <strong>right multiplies</strong> <span class="math inline">\(X\)</span> .</li>
+</ul>
+<p>Sample space OPs are used to separate sources of information related
+to the collection of the <span class="math inline">\(n\)</span> samples.
+Signal space OPs are used to separate signal features.</p>
+<p>Corrections in the signal space are common for spectral data with
+fixed variable order and include methods like External Parameter
+Orthogonalisation.</p>
+<p>However, in our case, the data consists of <strong>peak
+tables</strong>, where features are heterogeneous, non-ordered, and
+dataset-dependent. Applying projections in the signal space is thus not
+meaningful in this context.</p>
+<p>Instead, we apply orthogonal projections in the <strong>sample
+space</strong>, removing components aligned with known external
+variables (e.g., elapsed time or batch).</p>
+<p>Let <span class="math inline">\(X \in \mathbb{R}^{n \times
+p}\)</span> be the matrix of sample intensities (rows = samples, columns
+= peaks), and let <span class="math inline">\(v \in
+\mathbb{R}^n\)</span> be an external variable (e.g., elapsed time). We
+aim to remove from <span class="math inline">\(X\)</span> the component
+that is linearly aligned with <span class="math inline">\(v\)</span>.</p>
+<p>First, we <strong>center</strong> both <span class="math inline">\(X\)</span> and <span class="math inline">\(v\)</span> to eliminate constant offsets:</p>
+<ul>
+<li>Let <span class="math inline">\(\tilde{X} = X - \bar{X}\)</span>
+(column-wise centering)</li>
+<li>Let <span class="math inline">\(\tilde{v} = v -
+\bar{v}\)</span></li>
+</ul>
+<p>Then, for each column <span class="math inline">\(x_j\)</span> of
+<span class="math inline">\(\tilde{X}\)</span>, we compute its
+projection onto <span class="math inline">\(\tilde{v}\)</span>
+using:</p>
 <p><span class="math display">\[
-X^* = X(I - \hat{Q})
+\text{proj}_{\tilde{v}}(x_j) = \frac{\tilde{v}^T x_j}{\tilde{v}^T
+\tilde{v}} \cdot \tilde{v}
 \]</span></p>
-<p>In typical EPO implementations, <span class="math inline">\(\hat{Q}\)</span> is derived from a
-<strong>Principal Component Analysis (PCA)</strong> on difference
-spectra across levels of the external variable, often requiring
-replicate measurements under controlled variation.</p>
-<h3 id="id_21-application-to-the-urine-pool-dataset">2.1. Application to
-the urine pool dataset</h3>
-<p>In our case, all samples originate from a single <strong>urine
-pool</strong>, which means that their initial chemical composition is
-expected to be identical (the informative subspace <span class="math inline">\(\mathcal{C}\)</span> is therefore theoretically of
-dimension 1).<br />
-However, we observe progressive changes in the signal over time and
-across batches. These differences may originate from various sources —
-including biochemical reactions, temperature fluctuations, or
-instrumental drift — and the exact contribution of each factor remains
-uncertain.</p>
-<p>This means that not all observed variability can be immediately
-dismissed as noise or artefact. Some of it may reflect real chemical
-transformations.<br />
-While some of these changes might, in principle, belong to the
-informative space <span class="math inline">\(\mathcal{C}\)</span>, they
-are not associated with any intended experimental grouping. Since they
-appear to follow the acquisition order or elapsed time, we treat them as
-artefactual in this context. They are therefore included in <span class="math inline">\(\mathcal{G}\)</span>, as they represent
-uncontrolled variability that could obscure meaningful biological
-differences.</p>
-<p>As detailed in the [linearity analysis report] (<a href="https://github.com/tecladuran/gcims-workflows/blob/main/docs/linearity_report.md">https://github.com/tecladuran/gcims-workflows/blob/main/docs/linearity_report.md</a>),
-we observed clear linear trends in signal intensity with respect to
-elapsed time and batch index. These trends suggest that the dominant
-source of unwanted variability is linearly correlated with known
-external variables. Consequently, rather than estimating <span class="math inline">\(\mathcal{G}\)</span> via PCA as in standard EPO,
-we adopt a simplified approach: we define the external variable <span class="math inline">\(v \in \mathbb{R}^n\)</span> (e.g., elapsed time),
-and directly remove the component of <span class="math inline">\(X\)</span> aligned with <span class="math inline">\(v\)</span>.</p>
-<p>The corrected matrix is obtained as:</p>
+<p>Stacking all projected components together:</p>
 <p><span class="math display">\[
-X_{\text{corr}} = (X - \bar{X}) - (v - \bar{v}) \frac{(X - \bar{X})^T (v
-- \bar{v})}{(v - \bar{v})^T (v - \bar{v})} + \bar{X}
+\tilde{X}_{\text{proj}} = \frac{\tilde{v} \tilde{v}^T}{\tilde{v}^T
+\tilde{v}} \cdot \tilde{X}
 \]</span></p>
-<p>which is equivalent to:</p>
+<p>This expression defines the <strong>projection matrix</strong> <span class="math inline">\(P\)</span>:</p>
 <p><span class="math display">\[
-\hat{Q} = \frac{(v - \bar{v})(v - \bar{v})^T}{(v - \bar{v})^T (v -
-\bar{v})} \quad \Rightarrow \quad X_{\text{corr}} = X(I - \hat{Q})
+P = \frac{\tilde{v} \tilde{v}^T}{\tilde{v}^T \tilde{v}} \quad
+\Rightarrow \quad \tilde{X}_{\text{proj}} = P \tilde{X}
 \]</span></p>
-<p>This formulation corresponds to a <strong>linear
-orthogonalization</strong> of the signal against the direction defined
-by <span class="math inline">\(v\)</span>, and allows us to eliminate
-the influence of known external variables without estimating a full
-latent space.</p>
-<p>We are aware that other sources of variability — potentially
-nonlinear or multidimensional — may also be present. However, in this
-case, we explicitly target the linear component of the drift, as it is
-the most evident and dominant in our dataset.</p>
+<p>The corrected data is obtained by subtracting the projection:</p>
+<p><span class="math display">\[
+\tilde{X}_{\text{corr}} = (I - P)\tilde{X}
+\]</span></p>
+<p>Finally, we add back the mean to preserve the original intensity
+scale:</p>
+<p><span class="math display">\[
+X_{\text{corr}} = \tilde{X}_{\text{corr}} + \bar{X}
+\]</span></p>
+<p>This sample space correction is mathematically simple, interpretable,
+and especially suited for <strong>peak table</strong> data.</p>
+<p>It corresponds to a <strong>linear orthogonalization</strong> of the
+data against the external variable <span class="math inline">\(v\)</span>, targeting the most dominant and
+evident source of drift in the dataset.</p>
 <h4 id="methodological-considerations">Methodological
 Considerations</h4>
-<p>It is important to note that <strong>removing components aligned with
-external variables</strong> comes with the risk of also removing part of
-the signal of interest if both lie in similar directions. While in this
-study we intentionally remove time-related effects assuming all samples
-come from the same pool, this consideration becomes critical when
-analyzing <strong>datasets with real biological differences between
-samples</strong>.</p>
-<p>In such cases, if the group separation of interest is
-<strong>confounded</strong> with external trends (e.g., if all samples
-from one group were measured earlier in the sequence), orthogonalization
-might <strong>inadvertently remove the relevant signal</strong>. This
-underlines the importance of proper <strong>sample
-randomization</strong> during acquisition to ensure that true group
-differences are not aligned with experimental artifacts.</p>
-<p>We will return to this point in future sections, where the
-preservation of meaningful variation across groups will be essential for
-correct classification and interpretation.</p>
+<p>Removing variation aligned with external variables risks discarding
+relevant signal if both are correlated. In this study, all samples come
+from the same pool, so time-related effects can safely be treated as
+artefacts. However, in datasets with true biological differences,
+<strong>confounding</strong> with acquisition order may lead to loss of
+meaningful information. Proper <strong>randomization</strong> is
+essential to avoid this.</p>
 <h2 id="id_3-implementation">3. Implementation</h2>
 <p>The following function implements a linear orthogonalization
 procedure that removes the component of the signal aligned with a known
