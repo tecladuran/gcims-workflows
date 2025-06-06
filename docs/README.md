@@ -21,7 +21,7 @@
 - **[Linearity Report](Variability_Sources/linearity_report.md)**  
   Analyzes signal drift within and across batches using elapsed time, batch index, and storage time.  
   *Outcome:* Supports the use of batch as an ordinal temporal proxy.
-- **[Variability Sources](Variability_Sources/variability_sources.Rmd)**
+- **[Variability Sources](Variability_Sources/variability_sources.md)**
   Quantifies variability in cluster intensities explained by elapsed time and batch effects using R² and PCA.
   *Outcome: Elapsed time and batch are major sources of signal variability (70%).*
 
