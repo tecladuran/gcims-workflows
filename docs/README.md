@@ -24,7 +24,7 @@
 
 ---
 
-### [Variability Sources Analysis](Variability_Sources/)
+### [Analysis of Variability Sources ](Variability_Sources/)
 - **[Linearity Report](Variability_Sources/linearity_report.md)**  
   Analyzes signal drift within and across batches using elapsed time, batch index, and storage time.  
   *Outcome:* Supports the use of batch as an ordinal temporal proxy.
