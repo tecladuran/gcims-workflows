@@ -4,7 +4,7 @@
 
 ## Contents
 
-### [Preprocessing](Preprocessing/)
+### [Preprocessing and Feature Extraction](Preprocessing/)
 
 - **[Full Workflow: From Raw Data to Peak Table](Preprocessing/Full_workflow.md)**  
   Complete pipeline from raw GC-IMS signals to a processed and corrected peak table.  
@@ -17,17 +17,20 @@
 
 ---
 
-### [Linearity](Linearity/)
-- **[Linearity Report](Linearity/linearity_report.md)**  
-  Analyzes signal drift within and across batches using elapsed time, batch index, and storage time.  
-  *Outcome:* Supports the use of batch as an ordinal temporal proxy.
+### [Stability](Stability/)
+- **[Stability Analysis](Stability/stability_analysis.md)**  
+  Quantifies variability using RSD.   
+  *Result:* Only ~23% of clusters are stable (<20% RSD).
 
 ---
 
-### [Stability](Stability/)
-- **[Stability Analysis](Stability/stability_analysis.md)**  
-  Quantifies variability using RSD and variance explained by external factors.  
-  *Result:* Only ~23% of clusters are stable (<20% RSD).
+### [Analysis of Variability Sources ](Variability_Sources/)
+- **[Linearity Report](Variability_Sources/linearity_report.md)**  
+  Analyzes signal drift within and across batches using elapsed time, batch index, and storage time.  
+  *Outcome:* Supports the use of batch as an ordinal temporal proxy.
+- **[Variability Sources](Variability_Sources/variability_sources.md)**
+  Quantifies variability in cluster intensities explained by elapsed time and batch effects using R² and PCA.
+  *Outcome: Elapsed time and batch are major sources of signal variability (70%).*
 
 ---
 
