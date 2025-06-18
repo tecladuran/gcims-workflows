@@ -1,7 +1,7 @@
 Analysis of GC-IMS Peak Table Stability
 ================
 Tecla Duran Fort
-2025-06-06
+2025-06-18
 
 # 1. Load Peak Table
 
@@ -53,7 +53,7 @@ computing the Relative Standard Deviation (RSD) of its intensity values
 across repeated measurements:
 
 $$
-RSD = \frac{\text{Standard Deviation}}{\text{Mean}} \times 100
+RSD (\%) = \frac{\text{Standard Deviation}}{\text{Mean}} \times 100
 $$
 
 Relative Standard Deviation (RSD), or Coefficient of Variation (CV),
