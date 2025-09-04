@@ -1,0 +1,191 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+
+## Notació i dades
+
+-   $X \in \mathbb{R}^{n\times p}$: matriu de **dades** (n mostres, p *features*) **després** de corregir temps.
+
+-   $b \in \{1,\dots,k\}^n$: vector de **batch** (k batches).
+
+-   $\mathbf{1}_n$: vector de uns.
+
+-   **Centrat per columnes**:
+
+    $$
+    X_c \;=\; X - \mathbf{1}_n\,\bar x^\top,\qquad \bar x_j=\tfrac{1}{n}\sum_{i=1}^n X_{ij}.
+    $$
+
+> Treballem sempre amb $X_c$ per projectar/mesurar variància i, al final, si cal, hi **tornem a sumar** $\bar x$.
+
+------------------------------------------------------------------------
+
+## Via *features*
+
+### 1) Part **entre-batch** de les dades
+
+-   Matriu indicador (opcional) $E \in \mathbb{R}^{n\times k}$ (*one-hot*), projector de batch:
+
+    $$
+    P_E \;=\; E\,(E^\top E)^{-1} E^\top \in \mathbb{R}^{n\times n}.
+    $$
+
+-   **Equivalent pràctic sense one-hot**: per a cada batch $b$, substitueix les files $i\in b$ pel **promig de batch**:
+
+    $$
+    X_{\text{between}} \;=\; P_E\,X_c
+    \;\;\equiv\;\;
+    \bigl(\text{cada fila } i \text{ rep } \mu_{b(i)}^\top\bigr),\quad
+    \mu_{b}^\top = \tfrac{1}{n_b}\sum_{i\in b} X_{c,i\cdot}.
+    $$
+
+### 2) Direccions de mostra "entre-batch"
+
+-   **SVD** de la part entre-batch:
+
+    $$
+    X_{\text{between}} \;=\; U_b\,S_b\,V_b^\top.
+    $$
+
+-   **Direccions de mostra** (ortonormals):
+
+    $$
+    Q \;=\; U_b(:,1\!:\!m)\in\mathbb{R}^{n\times m},\qquad
+    m=\mathrm{rank}(X_{\text{between}})\le k-1.
+    $$
+
+    Cada columna $q_i$ és un **patró global** de desplaçament per batch.
+
+-   Pes de cada direcció (en la part entre-batch):
+
+    $$
+    \text{frac}_i \;=\; \frac{S_b(i,i)^2}{\sum_{j=1}^m S_b(j,j)^2}.
+    $$
+
+### 3) Projecció (tracció) de direccions
+
+-   **Projector ortogonal** sobre el complement de $\mathrm{span}(Q_L)$ (primeres $L$ direccions):
+
+    $$
+    P_L \;=\; I_n - Q_L Q_L^\top,\qquad
+    Q_L = [q_1,\dots,q_L].
+    $$
+
+-   **Dades corregides (centrades)**:
+
+    $$
+    X_c^{(\,L\,)} \;=\; P_L\,X_c.
+    $$
+
+-   **Part eliminada**:
+
+    $$
+    X_{c,\text{removed}}^{(\,L\,)} \;=\; X_c - X_c^{(\,L\,)} \;=\; Q_L Q_L^\top X_c.
+    $$
+
+> Si el teu `orthogonal_correction()` només accepta **una columna**, aplica $L=1$ (**rank-1**) **seqüencialment**: $q_1$ → $q_2$ → ... (recalculant o usant $Q$ fix en acumulat).
+
+### 4) Variàncies i mètriques
+
+-   **Variància total** (sobre dades **centrades per columnes**):
+
+    $$
+    \mathrm{TV}(X) \;=\; \sum_{j=1}^p \mathrm{var}(X_{\cdot j})
+    \;=\; \frac{\lVert X_c \rVert_F^2}{\,n-1\,}.
+    $$
+
+-   **Variància treta a la iter** $L$:
+
+    $$
+    \Delta \mathrm{TV}_L
+    \;=\; \mathrm{TV}\!\bigl(X^{(L-1)}\bigr) - \mathrm{TV}\!\bigl(X^{(L)}\bigr)
+    \;=\; \frac{\lVert X_{c,\text{removed}}^{(L)} \rVert_F^2}{n-1}.
+    $$
+
+-   **R² per *feature*** per una direcció $q$:
+
+    $$
+    R^2_j(q) = R^2\bigl( X_{\cdot j} \sim q \bigr),
+    \quad
+    \overline{R^2}(q) = \tfrac{1}{p}\sum_{j=1}^p R^2_j(q).
+    $$
+
+    *(A la pràctica: `apply(X, 2, function(y) summary(lm(y ~ q))$r.squared )` i fas la mitjana.)*
+
+------------------------------------------------------------------------
+
+## Equivalència amb el camí via **scores de PCA** $U$ (opcional, per context)
+
+-   **SVD/PCA de** $X_c$: $X_c = U S V^\top$ amb $U\in \mathbb{R}^{n\times r}$.
+
+-   "Entre-batch" dels **scores**:
+
+    $$
+    U_{\hat{}} = P_E\,U \quad\text{(o bé } (U_{\hat{}})_{i\cdot} = \text{mitjana de batch del } U_{i\cdot}\text{)}.
+    $$
+
+-   **Base ortonormal del subespai "entre-batch"**: $Q = \mathrm{orth}(U_{\hat{}})$.
+
+-   **Projector** i **correcció** com abans: $P_L=I- Q_LQ_L^\top$, $X_c^{(L)}=P_L X_c$.
+
+> Sobre les **columnes de** $X_c$, si uses **tot** $Q$ (L=m), és **equivalent** a residualitzar per-feature: $(I-QQ^\top)X_c = (I-P_E)X_c$. Amb **L petit** (rank-1/2), és una correcció **més suau**.
+
+------------------------------------------------------------------------
+
+## Procediment complet (el teu "pipeline")
+
+1.  **Construcció de direccions (un sol cop)**
+
+    -   Centra: $X_c = \text{center}(X)$.
+    -   $X_{\text{between}} = P_E X_c$ *(o per files: substituir per mitjana de batch)*.
+    -   SVD: $X_{\text{between}}=U_b S_b V_b^\top$.
+    -   **Direccions**: $Q=[q_1,\dots,q_m]=U_b(:,1\!:\!m)$, $m\le k-1$.
+    -   **Pesos**: $\text{frac}_i=S_b(i,i)^2/\sum_j S_b(j,j)^2$.
+
+2.  **Anàlisi explicativa (totes les direccions)**
+
+    -   **Plots** de cada $q_i$ (sèries "índex vs valor").
+
+    -   **R² mitjà** de cada $q_i$ sobre les *features*: $\overline{R^2}(q_i)$.
+
+    -   **Iteració sense llindars**: per $L=0..m$ calcula
+
+        -   $X^{(L)}_c=(I-Q_LQ_L^\top)X_c$,
+        -   $\mathrm{TV}(X^{(L)})$, $\Delta\mathrm{TV}_L$,
+        -   **PCA** de $X^{(L)}$ (per visuals).
+
+3.  **Mètode final (que proposaràs)**
+
+    -   **Agafa** $q_1$ i $q_2$.
+    -   Aplica el teu `orthogonal_correction()` **seqüencialment**: $X \xrightarrow{\;q_1\;} X^{(1)} \xrightarrow{\;q_2\;} X^{(2)}$.
+    -   Visualitza PCA final i reporta $\mathrm{TV}$ i $\overline{R^2}$ abans/després.
+
+4.  **Selecció automàtica (funció)**
+
+    -   Candidats $q_1,\dots,q_m$ (de l'SVD anterior).
+    -   Prova $L=1,2,\dots$ i guarda $\mathrm{TV}(X^{(L)})$, $\overline{R^2}(X^{(L)}\!\!,\text{batch})$.
+    -   **Criteris** (configurables): para quan $\overline{R^2}\le \tau$ *(p. ex. 0.05)* **o** drop relatiu de TV $<\epsilon$ *(p. ex. 1%)*.
+    -   Retorna $n_{\text{opt}}$, $q_1$, $q_2$, $Q_{\text{usada}}$, i l'històric.
+
+------------------------------------------------------------------------
+
+## Propietats clau (per escriure al paper)
+
+-   $Q^\top Q = I$ (columnes ortonormals).
+-   $P_L^\top = P_L$, $P_L^2 = P_L$ (projector **simmètric idempotent**).
+-   **Límit superior de m**: $m\le k-1$ (perquè la suma ponderada $\sum_b n_b \mu_b = 0$ imposa una restricció).
+-   **Equivalent** a residualitzar per-*feature* **només** si uses **tot el subespai** (L=m).
+-   Amb **L petit (1--2)**, elimines **patrons globals coherents** de batch i **preserves** millor el senyal.
+
+------------------------------------------------------------------------
+
+## Lectura dels gràfics que vas a generar
+
+-   **q-plots**: cada $q_i$ mostra com es mouen les mostres; sovint blocs per batch.
+-   **Barres** $\text{frac}_i$: quant de la part "entre-batch" explica cada direcció.
+-   $\mathrm{TV}$ vs iteració: gran caiguda al principi ⇒ batch dominant; llavors estabilitza.
+-   **PCA iteratiu**: ha de desestratificar per batch sense destruir estructures biològiques.
+
+------------------------------------------------------------------------

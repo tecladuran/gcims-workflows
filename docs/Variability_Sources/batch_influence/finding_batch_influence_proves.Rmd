@@ -1,0 +1,511 @@
+---
+title: "Finding Batch Influence"
+author: "Tecla Duran Fort"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: yes
+    fig_caption: yes
+  html_document:
+    toc: yes
+    df_print: paged
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.path = "batch_inf_files/figure-latex/")
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(lubridate)
+library(reshape2)
+library(BiocParallel)
+library(skimr)
+library(kableExtra)
+library(ggpubr)
+source("../../load_gcims_tools.R")
+```
+
+Load Peak Table
+
+```{r load-data}
+df <- read.csv("../../data/peak_table_var.csv")
+```
+
+# Principal Component Analysis
+
+We will use Principal Component Analysis (PCA) as an **exploratory tool** to assess how **elapsed time** and **batch number** influence the intensity variations of the clusters.
+
+We will plot the first two principal components (PC1 and PC2), which capture the most significant variance in the data. If we observe clear patterns or separations in the plots, it suggests that these factors are influencing the measurements.
+
+Additionally, we will evaluate the explained variance by the first few components to understand how much of the overall variability in the data is captured by each component.
+
+```{r pca-analysis, echo=FALSE, warning=FALSE, fig.width=6, fig.height=5}
+intensities <- df %>% dplyr::select(starts_with("Cluster"))
+# Scale intensities
+intensities_scaled <- scale(intensities)
+
+# PCA
+pca <- prcomp(intensities_scaled)
+
+# Explained variance
+explained_var <- summary(pca)$importance[2, ] * 100
+axis_labels <- paste0("PC", 1:2, " (", round(explained_var[1:2], 1), "%)")
+
+# PCA dataframe
+pca_df <- data.frame(PC1 = pca$x[,1], PC2 = pca$x[,2],
+                     Elapsed_Time = df$elapsed_time,
+                     Batch = as.factor(df$batch))
+
+# Custom plot function
+plot_pca <- function(data, color_var, title, color_scale) {
+  ggplot(data, aes_string(x = "PC1", y = "PC2", color = color_var)) +
+    geom_point(size = 2) +
+    color_scale +
+    theme_minimal() +
+    labs(title = title, x = axis_labels[1], y = axis_labels[2])+
+    theme(
+    plot.title = element_text(size = 12, hjust = 0.5))
+}
+```
+
+```{r pca-elapsed, echo=FALSE, warning=FALSE, fig.width=6, fig.height=4, fig.align='center',fig.cap = "PCA plot of cluster intensities colored by elapsed time", fig.pos='H'}
+plot_pca(pca_df, "Elapsed_Time", "PCA colored by Elapsed Time",
+         scale_color_gradientn(colours = hcl.colors(100, "YlGnBu")))
+```
+
+```{r pca-batch, echo=FALSE, warning=FALSE, fig.width=5.5, fig.height=4, fig.align='center', fig.cap = "PCA plot of cluster intensities colored by batch number", fig.pos='H'}
+plot_pca(pca_df, "Batch", "PCA colored by Batch",
+         scale_color_discrete())
+```
+
+```{r explained-variance-barplot, echo=FALSE, warning=FALSE, fig.width=4, fig.height=3, fig.align='center', fig.cap = "Percentage of total variance explained by the first five principal components", fig.pos='H'}
+# Explained variance barplot (smaller)
+explained_df <- data.frame(Component = paste0("PC", 1:5), Variance = explained_var[1:5])
+
+ggplot(explained_df, aes(x = Component, y = Variance)) +
+  geom_bar(stat = "identity", fill = "#A8DADC") +
+  theme_minimal() +
+  labs(title = "Explained Variance by Principal Components",
+       x = "Principal Component", y = "Explained Variance (%)") +
+  scale_y_continuous(labels = scales::percent_format(scale = 1))
+```
+
+
+# Linear Correction
+
+The following function implements a linear orthogonalization procedure that removes the component of the signal aligned with a known external variable (e.g., elapsed time or batch index). This is achieved by computing the projection of each variable onto the centered external variable and subtracting it from the data.
+
+The function returns both the corrected data and the removed projection component.
+
+```{r orth-function}
+orthogonal_correction <- function(data, variable){
+  data_mean <- colMeans(data)
+  variable_mean <- mean(variable)
+  data_centered <- sweep(data, 2, data_mean, "-")
+  variable_centered <- variable - variable_mean
+  scores <- as.numeric(t(data_centered) %*% variable_centered / sum(variable_centered^2))
+  projection <- outer(variable_centered, scores)
+  corrected_data <- data_centered - projection
+  corrected_data <- sweep(corrected_data, 2, data_mean, "+")
+  return(list(corrected = corrected_data, projection = projection))
+}
+```
+
+## Correcting Elapsed Time
+
+```{r apply-correction}
+intensities <- df %>% dplyr::select(starts_with("Cluster"))
+
+# Correction for elapsed time
+corr_time <- orthogonal_correction(intensities, df$elapsed_time)
+intensities_time_corr <- corr_time$corrected
+
+# Components for visualization
+time_projection <- corr_time$projection
+```
+
+# Finding Batch Influence
+
+## Visualization: PCA of Time-Corrected Intensities
+
+```{r pca-analysis, echo=FALSE, warning=FALSE, fig.width=6, fig.height=5}
+intensities_corr_time <- corr_time$corrected
+# Scale intensities
+intensities_scaled_corr_time <- scale(intensities_corr_time)
+
+# PCA
+pca <- prcomp(intensities_scaled_corr_time)
+
+# Explained variance
+explained_var <- summary(pca)$importance[2, ] * 100
+axis_labels <- paste0("PC", 1:2, " (", round(explained_var[1:2], 1), "%)")
+
+# PCA dataframe
+pca_df <- data.frame(PC1 = pca$x[,1], PC2 = pca$x[,2],
+                     Elapsed_Time = df$elapsed_time,
+                     Batch = as.factor(df$batch))
+
+# Custom plot function
+plot_pca <- function(data, color_var, title, color_scale) {
+  ggplot(data, aes_string(x = "PC1", y = "PC2", color = color_var)) +
+    geom_point(size = 2) +
+    color_scale +
+    theme_minimal() +
+    labs(title = title, x = axis_labels[1], y = axis_labels[2])+
+    theme(
+    plot.title = element_text(size = 12, hjust = 0.5))
+}
+```
+
+
+```{r pca-batch, echo=FALSE, warning=FALSE, fig.width=5.5, fig.height=4, fig.align='center', fig.cap = "PCA plot of cluster intensities colored by batch number", fig.pos='H'}
+plot_pca(pca_df, "Batch", "PCA colored by Batch",
+         scale_color_discrete())
+```
+
+```{r explained-variance-barplot, echo=FALSE, warning=FALSE, fig.width=4, fig.height=3, fig.align='center', fig.cap = "Percentage of total variance explained by the first five principal components", fig.pos='H'}
+# Explained variance barplot (smaller)
+explained_df <- data.frame(Component = paste0("PC", 1:5), Variance = explained_var[1:5])
+
+ggplot(explained_df, aes(x = Component, y = Variance)) +
+  geom_bar(stat = "identity", fill = "#A8DADC") +
+  theme_minimal() +
+  labs(title = "Explained Variance by Principal Components",
+       x = "Principal Component", y = "Explained Variance (%)") +
+  scale_y_continuous(labels = scales::percent_format(scale = 1))
+```
+
+## Method 1
+
+### 1) Projecció del subespai “batch” + PCA **després**
+
+```{r batch-projection-core, echo=FALSE, message=FALSE, warning=FALSE}
+library(MASS)    # for ginv()
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# --- Inputs ---
+X  <- as.matrix(corr_time$corrected)     # time-corrected intensities (n x p)
+n  <- nrow(X)
+batch_fac <- as.factor(df$batch)
+
+# --- Center columns (keep original feature scales) ---
+col_means <- colMeans(X, na.rm = TRUE)
+Xc <- scale(X, center = TRUE, scale = FALSE)
+
+# --- PCA BEFORE (for reference; you already computed it, but keep local copy) ---
+pca_before <- prcomp(scale(X))  # same convention you used for plotting
+
+explained_var_before <- summary(pca_before)$importance[2, ] * 100
+axis_labels_before <- paste0("PC", 1:2, " (", round(explained_var_before[1:2], 1), "%)")
+
+pca_df_before <- data.frame(
+  PC1 = pca_before$x[,1],
+  PC2 = pca_before$x[,2],
+  Elapsed_Time = df$elapsed_time,
+  Batch = batch_fac
+)
+
+# --- PCA-guided batch subspace in sample space ---
+# 1) SVD scores in sample space
+sv <- svd(Xc)     # Xc = U S V^T
+U  <- sv$u        # n x r (orthonormal)
+
+# 2) Batch design (one-hot, no intercept)
+E_batch <- model.matrix(~ 0 + batch_fac)  # n x k
+
+# 3) Project U onto col(E_batch) → U_hat = P_E U
+PE    <- E_batch %*% MASS::ginv(t(E_batch) %*% E_batch) %*% t(E_batch)  # n x n
+U_hat <- PE %*% U
+
+# 4) Orthonormalize to get Q (columns are the directions to remove)
+qrU <- qr(U_hat)
+m   <- qrU$rank
+if (m > 0) {
+  Q <- qr.Q(qrU)[, seq_len(m), drop = FALSE]   # n x m
+  P <- diag(n) - Q %*% t(Q)                    # projector in sample space
+  X_corr_c <- P %*% Xc                         # corrected (still centered)
+  X_removed_c <- Xc - X_corr_c                 # the exact part we removed (QQ^T Xc)
+} else {
+  Q <- matrix(, nrow = n, ncol = 0)
+  X_corr_c <- Xc
+  X_removed_c <- 0 * Xc
+}
+
+# Back to absolute levels (if needed)
+X_corr <- sweep(X_corr_c, 2, col_means, `+`)
+X_removed <- sweep(X_removed_c, 2, 0, `+`)     # removed part is centered by construction
+
+# --- PCA AFTER ---
+pca_after <- prcomp(scale(X_corr))
+explained_var_after <- summary(pca_after)$importance[2, ] * 100
+axis_labels_after <- paste0("PC", 1:2, " (", round(explained_var_after[1:2], 1), "%)")
+
+pca_df_after <- data.frame(
+  PC1 = pca_after$x[,1],
+  PC2 = pca_after$x[,2],
+  Elapsed_Time = df$elapsed_time,
+  Batch = batch_fac
+)
+
+# Save for later chunks
+intensities_corr_time_batch <- X_corr
+intensities_removed_batch   <- X_removed
+Q_batch <- Q
+```
+
+---
+
+### 2) PCA **abans** vs **després** (veure l’efecte visualment)
+
+```{r pca-before-after, echo=FALSE, message=FALSE, warning=FALSE, fig.width=11, fig.height=4, fig.align='center'}
+p1 <- plot_pca(pca_df_before, "Batch", "PCA BEFORE (time-corrected only)", scale_color_discrete()) +
+  labs(x = axis_labels_before[1], y = axis_labels_before[2])
+p2 <- plot_pca(pca_df_after,  "Batch", "PCA AFTER removing batch subspace", scale_color_discrete()) +
+  labs(x = axis_labels_after[1], y = axis_labels_after[2])
+
+cowplot::plot_grid(p1, p2, ncol = 2)
+```
+
+---
+
+### 3) Què hem tret? Magnitud **per mostra** de la part eliminada
+
+> Norma L2 de la part eliminada `(QQ^T Xc)` per mostra. Hauries de veure valors més grans en els batches que més s’allunyaven.
+
+```{r removed-magnitude-per-sample, echo=FALSE, message=FALSE, warning=FALSE, fig.width=6.5, fig.height=4.2, fig.align='center'}
+removed_norm_sample <- sqrt(rowSums(intensities_removed_batch^2))
+
+df_removed <- data.frame(
+  Sample = seq_len(length(removed_norm_sample)),
+  Removed_L2 = removed_norm_sample,
+  Batch = batch_fac
+)
+
+ggplot(df_removed, aes(x = Batch, y = Removed_L2, fill = Batch)) +
+  geom_violin(trim = FALSE, alpha = 0.75) +
+  geom_boxplot(width = 0.15, outlier.shape = NA, alpha = 0.9) +
+  guides(fill = "none") +
+  theme_minimal() +
+  labs(title = "Amount removed per sample (L2 norm of removed component)",
+       y = "||Removed|| (L2)", x = "Batch")
+```
+
+---
+
+### 4) PC1 per batch **abans** vs **després** (boxplots, sense jitter)
+
+```{r pc1-by-batch-before-after, echo=FALSE, message=FALSE, warning=FALSE, fig.width=7, fig.height=4.2, fig.align='center'}
+df_pc1 <- bind_rows(
+  data.frame(Batch = batch_fac, PC1 = pca_before$x[,1], Phase = "Before"),
+  data.frame(Batch = batch_fac, PC1 = pca_after$x[,1],  Phase = "After")
+)
+
+ggplot(df_pc1, aes(x = Batch, y = PC1, fill = Phase)) +
+  geom_boxplot(position = position_dodge(width = 0.8), outlier.shape = NA) +
+  theme_minimal() +
+  labs(title = "PC1 scores by batch: before vs after",
+       y = "PC1 score", x = "Batch")
+```
+
+---
+
+### 5) Quina associació PC–batch hi havia i què queda? (ANOVA q-values)
+
+```{r batch-association-anova, echo=FALSE, message=FALSE, warning=FALSE, fig.width=7.2, fig.height=4.2, fig.align='center'}
+# ANOVA per PC (primers K)
+K <- min(10, ncol(pca_before$x), ncol(pca_after$x))
+
+p_before <- sapply(1:K, function(k)
+  summary(aov(pca_before$x[,k] ~ batch_fac))[[1]][["Pr(>F)"]][1])
+q_before <- p.adjust(p_before, "BH")
+
+p_after <- sapply(1:K, function(k)
+  summary(aov(pca_after$x[,k] ~ batch_fac))[[1]][["Pr(>F)"]][1])
+q_after <- p.adjust(p_after, "BH")
+
+diag_df <- data.frame(
+  PC = factor(paste0("PC", 1:K), levels = paste0("PC", 1:K)),
+  `Before` = -log10(q_before),
+  `After`  = -log10(q_after)
+) |>
+  pivot_longer(cols = c("Before","After"), names_to = "Phase", values_to = "neglog10_q")
+
+ggplot(diag_df, aes(x = PC, y = neglog10_q, fill = Phase)) +
+  geom_col(position = "dodge") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "Batch association per PC (-log10 q-value), before vs after",
+       y = "-log10(q)", x = NULL)
+```
+
+---
+
+### 6) (Opcional) Visualitzar el **subespai eliminat** (primeres dues columnes de `Q`)
+
+> Aquest scatter és dels **vectors de mostra** a l’espai eliminat. Si `m ≥ 2`, hauries de veure que separa clarament per batch.
+
+```{r plot-Q-space, echo=FALSE, message=FALSE, warning=FALSE, fig.width=5.5, fig.height=4.2, fig.align='center'}
+if (!is.null(Q_batch) && ncol(Q_batch) >= 2) {
+  df_Q <- data.frame(Q1 = Q_batch[,1], Q2 = Q_batch[,2], Batch = batch_fac)
+  ggplot(df_Q, aes(Q1, Q2, color = Batch)) +
+    geom_point(size = 2) +
+    theme_minimal() +
+    labs(title = "Removed sample-space (first two directions of Q)",
+         x = "Q1", y = "Q2")
+} else if (!is.null(Q_batch) && ncol(Q_batch) == 1) {
+  df_Q <- data.frame(Q1 = Q_batch[,1], Batch = batch_fac)
+  ggplot(df_Q, aes(x = Batch, y = Q1, color = Batch)) +
+    geom_boxplot(outlier.shape = NA) +
+    theme_minimal() +
+    guides(color = "none") +
+    labs(title = "Removed sample-space (single direction Q1)",
+         y = "Q1", x = "Batch")
+}
+```
+
+## Method 2: Orthogonal Correction
+
+```{r}
+library(MASS)  # ginv
+
+X <- as.matrix(corr_time$corrected)
+n <- nrow(X)
+
+# 1) Centra columnes (manté escales)
+Xc <- scale(X, center = TRUE, scale = FALSE)
+
+# 2) PCA via SVD (scores en espai de mostres)
+sv <- svd(Xc)      # Xc = U S V^T
+U  <- sv$u         # n x r, ortonormals
+
+# 3) Disseny per batch (one-hot)
+E_batch <- model.matrix(~ 0 + as.factor(df$batch))  # n x k
+
+# 4) Part dels scores explicada per batch: U_hat = P_E * U
+PE    <- E_batch %*% MASS::ginv(t(E_batch) %*% E_batch) %*% t(E_batch)
+Uhat  <- PE %*% U
+
+# 5) Ortonormalitza per obtenir Q (direccions "trobades")
+qrU <- qr(Uhat); m <- qrU$rank
+if (m > 0) {
+  Q <- qr.Q(qrU)[, seq_len(m), drop = FALSE] # n x m
+  q1<- Q[, 1]
+  # El teu orthogonal_correction pot rebre E = Q directament:
+  oc_batch <- orthogonal_correction(X, q1)
+  X_batch_removed <- oc_batch$corrected
+} else {
+  X_batch_removed <- X
+}
+
+# 6) PCA i plot per veure l’efecte
+pca_after_batch <- prcomp(scale(X_batch_removed))
+explained_after2 <- summary(pca_after_batch)$importance[2,]*100
+axis_labels_after2 <- paste0("PC", 1:2, " (", round(explained_after2[1:2], 1), "%)")
+
+pca_df_after_batch <- data.frame(
+  PC1 = pca_after_batch$x[,1],
+  PC2 = pca_after_batch$x[,2],
+  Elapsed_Time = df$elapsed_time,
+  Batch = as.factor(df$batch)
+)
+
+plot_pca(pca_df_after_batch, "Batch", "PCA after removing 'found' batch subspace",
+         scale_color_discrete()) +
+  labs(x = axis_labels_after2[1], y = axis_labels_after2[2])
+
+```
+
+```{r r-squared-analysis, echo=FALSE, include=FALSE}
+# Calculate R² for each cluster with respect to elapsed time and batch number
+cluster_columns <- grep("Cluster", names(df), value = TRUE)
+r_squared_results <- data.frame(Cluster = cluster_columns, Elapsed_Time = numeric(length(cluster_columns)), Batch = numeric(length(cluster_columns)), q1 = numeric(length(cluster_columns)))
+
+for (cluster in cluster_columns) {
+  # R² for elapsed time
+  model_time <- lm(df[[cluster]] ~ df$elapsed_time)
+  r_squared_results$Elapsed_Time[r_squared_results$Cluster == cluster] <- summary(model_time)$r.squared
+  
+  # R² for batch number
+  model_batch <- lm(df[[cluster]] ~ df$batch)
+  r_squared_results$Batch[r_squared_results$Cluster == cluster] <- summary(model_batch)$r.squared
+  
+  # R² for q1
+  model_time <- lm(df[[cluster]] ~ q1)
+  r_squared_results$q1[r_squared_results$Cluster == cluster] <- summary(model_time)$r.squared
+}
+
+```
+
+
+```{r barplot-r-squared, echo=FALSE, fig.cap = "Proportion of variance in cluster intensity explained by elapsed time, batch, and other factors", fig.height=4, fig.width=7, fig.pos='H'}
+
+
+# Calculate the remaining variance for "other factors"
+r_squared_results$Other <- 1 - (r_squared_results$Elapsed_Time + r_squared_results$Batch)
+
+# Reshape the results for plotting
+r_squared_long <- r_squared_results %>% dplyr::select(-q1) %>%
+  gather(key = "Factor", value = "R2", -Cluster) %>%
+  mutate(Factor = factor(Factor, levels = c("Elapsed_Time", "Batch", "Other")))
+
+# Create the bar plot
+ggplot(r_squared_long, aes(x = Cluster, y = R2, fill = Factor)) +
+  geom_bar(stat = "identity", position = "stack") +
+  theme_minimal() +
+  labs(
+    title = "Explained Variance for Each Cluster",
+    x = "Cluster",
+    y = "Proportion of Explained Variance (R²)"
+  ) +
+  scale_fill_manual(values = c("#1D3557", "#A8DADC", "#FAEDCD")) +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),
+    axis.title = element_text(size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r mean-calculation, fig.align="center", fig.width=5.5, fig.height=0.5, fig.pos='H', echo=FALSE}
+# Calculate the mean R² for each factor (Elapsed Time and Batch Number)
+mean_r2 <- colMeans(r_squared_results[, -1])
+# Crear data frame horitzontal a partir de mean_r2
+mean_r2_df <- as.data.frame(t(round(mean_r2, 3)))
+rownames(mean_r2_df) <- NULL
+
+# Mostrar com a figura
+ggtexttable(mean_r2_df, rows = NULL, theme = ttheme("light"))
+```
+
+
+
+```{r barplot-r-squared, echo=FALSE, fig.cap = "Proportion of variance in cluster intensity explained by elapsed time, batch, and other factors", fig.height=4, fig.width=7, fig.pos='H'}
+
+# Calculate the remaining variance for "other factors"
+r_squared_results$Other <- 1 - (r_squared_results$Elapsed_Time + r_squared_results$q1)
+
+# Reshape the results for plotting
+r_squared_long <- r_squared_results %>% dplyr::select(-Batch) %>%
+  gather(key = "Factor", value = "R2", -Cluster) %>%
+  mutate(Factor = factor(Factor, levels = c("Elapsed_Time", "q1", "Other")))
+
+# Create the bar plot
+ggplot(r_squared_long, aes(x = Cluster, y = R2, fill = Factor)) +
+  geom_bar(stat = "identity", position = "stack") +
+  theme_minimal() +
+  labs(
+    title = "Explained Variance for Each Cluster",
+    x = "Cluster",
+    y = "Proportion of Explained Variance (R²)"
+  ) +
+  scale_fill_manual(values = c("#1D3557", "#A8DADC", "#FAEDCD")) +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),
+    axis.title = element_text(size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1))
+```
+

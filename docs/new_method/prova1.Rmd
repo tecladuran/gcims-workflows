@@ -1,0 +1,486 @@
+---
+title: "New Method For Finding Variable Influence and Orthogonalising"
+author: "Tecla Duran Fort"
+date: "`r Sys.Date()`"
+output:
+  github_document:
+    toc: yes
+  html_document:
+    toc: yes
+    df_print: paged
+  pdf_document:
+    toc: yes
+    fig_caption: yes
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.path = "batch_inf_files/figure-latex/")
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(lubridate)
+library(reshape2)
+library(BiocParallel)
+library(skimr)
+library(kableExtra)
+library(ggpubr)
+library(MASS) 
+library(cowplot)
+library(RColorBrewer)
+
+source("../../load_gcims_tools.R")
+```
+
+```{r, echo=FALSE}
+plot_pca <- function(data, color_var, title, color_scale) {
+  ggplot(data, aes_string(x = "PC1", y = "PC2", color = color_var)) +
+    geom_point(size = 2) +
+    color_scale +
+    theme_minimal() +
+    labs(title = title, x = axis_labels[1], y = axis_labels[2])+
+    theme(
+    plot.title = element_text(size = 12, hjust = 0.5))
+}
+
+scale_batch<-scale_color_discrete()
+scale_time<-scale_color_manual(
+  values = colorRampPalette(brewer.pal(9, "YlGnBu"))(15)
+)
+```
+
+\newpage
+
+# Load Data
+
+```{r load-data}
+df <- read.csv("../../data/peak_table_var.csv")
+
+# Prepare Matrices
+
+# PEAK TABLE
+X <- as.matrix(df %>% dplyr::select(starts_with("Cluster")))
+
+# VARIABLES
+
+# Vector batch (samples x 1)
+batch <- df$batch
+
+# Matriu B: one-hot encoding (samples x nbatches)
+nbatch <- length(unique(batch))
+B <- model.matrix(~ 0 + factor(batch))   # 135 x nbatch
+colnames(B) <- paste0("Batch_", sort(unique(batch)))
+
+
+# Índex d'ordre dins de cada batch (1, 2, 3, ...)
+df <- df %>%
+  arrange(batch, elapsed_time) %>%
+  group_by(batch) %>%
+  mutate(order_in_batch = row_number()) %>%
+  ungroup()
+
+order_in_batch <- df$order_in_batch
+
+# One-hot encoding
+max_order <- max(order_in_batch)
+
+O <- model.matrix(~ 0 + factor(order_in_batch, levels = 1:max_order))
+colnames(O) <- paste0("Ord_", 1:max_order)
+
+```
+
+
+# Batch Correction
+
+## Batch-wise Mean Intensity Calculation
+
+```{r batch-mean}
+batch_sizes <- as.vector(t(B) %*% rep(1, nrow(X))) # vector de llargada 9
+batch_sums <- t(B) %*% X # 9 x 50
+
+M <- sweep(batch_sums, 1, batch_sizes, "/")   # 9 x 50
+rownames(M) <- colnames(B)  
+colnames(M) <- colnames(X)    
+
+X_batch_means <- B %*% M   # 135 x 50
+rownames(X_batch_means) <- rownames(X)
+colnames(X_batch_means) <- colnames(X)
+```
+
+## PCA on Batch-wise Mean Intensities
+```{r pca-batch}
+# PCA sobre la matriu de mitjanes per batch
+pca_batch <- prcomp(X_batch_means, scale. = TRUE)
+
+# Scores (coordenades de les mostres en PC1, PC2, ...)
+scores <- pca_batch$x
+
+# Loadings (direccions dels compostos)
+loadings <- pca_batch$rotation
+
+```
+
+
+```{r var-exp, fig.width=4, fig.height=4, echo=FALSE}
+# Variància explicada
+var_explained <- pca_batch$sdev^2 / sum(pca_batch$sdev^2)
+df_var <- data.frame(
+  PC = paste0("PC", 1:5),
+  Variance = var_explained[1:5] * 100
+)
+
+# Bar plot amb ggplot
+ggplot(df_var, aes(x = PC, y = Variance)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_text(aes(label = sprintf("%.1f%%", Variance)),
+            vjust = -0.5, size = 4) +
+  labs(title = "Explained Variance (Top 5 PCs)",
+       x = "Principal Components",
+       y = "Variance Explained (%)") +
+  theme_minimal(base_size = 10)
+```
+
+
+```{r, pc1-batch-plot, fig.width=9, fig.height=5}
+# Agafem els scores del PCA
+scores <- as.data.frame(pca_batch$x)
+
+# Afegim info de batch per acolorir
+scores$Sample <- 1:nrow(scores)
+scores$Batch <- df$batch
+
+# Gràfic PC1 vs mostra
+ggplot(scores, aes(x = Sample, y = PC1, color = factor(Batch))) +
+  geom_point(size = 2) +
+  geom_line(aes(group = 1), alpha = 0.4) +
+  labs(title = "PC1 Scores across Samples",
+       x = "Sample index",
+       y = "PC1 score",
+       color = "Batch") +
+  theme_minimal(base_size = 10)
+
+```
+
+```{r}
+# PC1 (direcció sobre la qual ferem la correccio ortogonal)
+pc1_batch_means <- scores$PC1
+```
+
+
+
+
+# Time/Order Correction
+
+
+
+## Order-wise Mean Intensity Calculation
+
+```{r order-mean}
+order_sizes <- as.vector(t(O) %*% rep(1, nrow(X))) # vector de llargada 9
+order_sums <- t(O) %*% X # 9 x 50
+
+M <- sweep(order_sums, 1, batch_sizes, "/")   # 9 x 50
+rownames(M) <- colnames(O)  
+colnames(M) <- colnames(X)    
+
+X_order_means <- O %*% M   # 135 x 50
+rownames(X_batch_means) <- rownames(X)
+colnames(X_batch_means) <- colnames(X)
+```
+
+## PCA on Order-wise Mean Intensities
+```{r pca-order}
+# PCA sobre la matriu de mitjanes per ordre
+pca_order <- prcomp(X_order_means, scale. = TRUE)
+
+
+# Scores (coordenades de les mostres en PC1, PC2, ...)
+scores <- pca_order$x
+
+# Loadings (direccions dels compostos)
+loadings <- pca_order$rotation
+
+```
+
+
+```{r var-exp-order, fig.width=4, fig.height=4, echo=FALSE}
+# Variància explicada
+var_explained <- pca_order$sdev^2 / sum(pca_order$sdev^2)
+df_var <- data.frame(
+  PC = paste0("PC", 1:5),
+  Variance = var_explained[1:5] * 100
+)
+
+# Bar plot amb ggplot
+ggplot(df_var, aes(x = PC, y = Variance)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_text(aes(label = sprintf("%.1f%%", Variance)),
+            vjust = -0.5, size = 4) +
+  labs(title = "Explained Variance (Top 5 PCs)",
+       x = "Principal Components",
+       y = "Variance Explained (%)") +
+  theme_minimal(base_size = 10)
+```
+
+
+```{r pc1-order-plot, fig.width=10, fig.height=4, echo=FALSE}
+# Scores
+scores <- as.data.frame(pca_order$x)
+
+# Afegim info de batch per acolorir
+scores$Sample <- 1:nrow(scores)
+scores$Order <- df$order_in_batch
+
+# Gràfic PC1 vs mostra
+ggplot(scores, aes(x = Sample, y = PC1, color = factor(Order))) +
+  geom_point(size = 2) +
+  geom_line(aes(group = 1), alpha = 0.4) +
+  labs(title = "PC1 Scores across Samples",
+       x = "Sample index",
+       y = "PC1 score",
+       color = "Order in Batch") +
+  theme_minimal(base_size = 10)
+
+```
+
+```{r}
+# PC1 (direcció sobre la qual ferem la correccio ortogonal)
+pc1_order_means <- scores$PC1
+```
+
+
+
+# Results
+
+## PCA Before
+
+```{r, fig.width=10, fig.height=4, echo=FALSE}
+# --- PCA sobre X (abans de res) ---
+pca_X <- prcomp(X, scale. = TRUE)
+scores_X <- as.data.frame(pca_X$x)
+
+explained_var <- summary(pca_X)$importance[2, ] * 100
+axis_labels <- paste0("PC", 1:2, " (", round(explained_var[1:2], 1), "%)")
+
+
+# Data per fer el plot (PC1 vs PC2), acolorit per batch
+plot_df_before <- scores_X %>%
+  transmute(PC1 = PC1, PC2 = PC2, batch = factor(batch), order=factor(order_in_batch))
+plot_df_before$batch<-as.factor(plot_df_before$batch)
+
+
+# Plot PCA abans
+p1<-plot_pca(plot_df_before, "batch", "PCA colored by Batch",
+         scale_batch)
+p2<-plot_pca(plot_df_before, "order", "PCA colored by Time Order",
+         scale_time)
+
+p1+p2
+```
+
+## PCA After Batch Correction (Order remaining)
+
+```{r corr-batch}
+# Batch Correction: Orthogonalising to PC1)
+batch_corr <- orthogonal_correction(X, pc1_batch_means)$corrected
+```
+
+```{r, fig.width=6, fig.height=4, echo=FALSE}
+# PCA sobre X ortogonalitzat
+pca_after <- prcomp(batch_corr, scale. = TRUE)
+scores_after <- as.data.frame(pca_after$x)
+
+
+# Axis labels amb % var. explicada
+var_exp_after <- pca_after$sdev^2 / sum(pca_after$sdev^2)
+axis_labels <- c(
+  sprintf("PC1 (%.1f%%)", 100 * var_exp_after[1]),
+  sprintf("PC2 (%.1f%%)", 100 * var_exp_after[2])
+)
+
+plot_df_after <- scores_after %>%
+  transmute(PC1 = PC1, PC2 = PC2, batch = factor(df$batch), order=factor(df$order_in_batch))
+
+
+p_after <- plot_pca(plot_df_after, "batch",
+                    "PCA on X after orthogonalization to PC1 from batch means",
+                    scale_batch)
+print(p_after)
+```
+```{r, fig.width=6, fig.height=4, echo=FALSE}
+p_after_2 <- plot_pca(plot_df_after, "order",
+                    "PCA on X after orthogonalization to PC1 from batch means",
+                    scale_time)
+print(p_after_2)
+```
+
+## PCA After Time / Order Correction (batch remaining)
+
+```{r}
+order_corr <- orthogonal_correction(X, pc1_order_means)$corrected
+```
+
+
+```{r, fig.width=6, fig.height=4, echo=FALSE}
+# PCA sobre X ortogonalitzat
+pca_after <- prcomp(order_corr, scale. = TRUE)
+scores_after <- as.data.frame(pca_after$x)
+
+
+# Axis labels amb % var. explicada
+var_exp_after <- pca_after$sdev^2 / sum(pca_after$sdev^2)
+axis_labels <- c(
+  sprintf("PC1 (%.1f%%)", 100 * var_exp_after[1]),
+  sprintf("PC2 (%.1f%%)", 100 * var_exp_after[2])
+)
+
+plot_df_after <- scores_after %>%
+  transmute(PC1 = PC1, PC2 = PC2, batch = factor(df$batch), order=factor(df$order_in_batch))
+
+
+p_after <- plot_pca(plot_df_after, "order",
+                    "PCA on X after orthogonalization to PC1 from order/time means",
+                    scale_time)
+                    
+print(p_after)
+```
+```{r, fig.width=6, fig.height=4}
+p_after_2 <- plot_pca(plot_df_after, "batch",
+                    "PCA on X after orthogonalization to PC1 from order/time means",
+                    scale_batch)
+print(p_after_2)
+```
+
+**Comentari**: Es deixa de diferenciar en el PCA la variable que treiem, i l'altra es continua diferenciant i a més sembla paral·lela al nou PC1 en tots dos casos. 
+
+## PCA After Both Corrections
+
+```{r}
+X_corrected <- orthogonal_correction(
+  (orthogonal_correction(X, pc1_batch_means)$corrected), 
+  pc1_order_means)$corrected
+```
+
+```{r, fig.width=10, fig.height=5, echo=FALSE}
+# PCA sobre X ortogonalitzat
+pca_after <- prcomp(X_corrected, scale. = TRUE)
+scores_after <- as.data.frame(pca_after$x)
+
+
+# Axis labels amb % var. explicada
+var_exp_after <- pca_after$sdev^2 / sum(pca_after$sdev^2)
+axis_labels <- c(
+  sprintf("PC1 (%.1f%%)", 100 * var_exp_after[1]),
+  sprintf("PC2 (%.1f%%)", 100 * var_exp_after[2])
+)
+
+plot_df_after <- scores_after %>%
+  transmute(PC1 = PC1, PC2 = PC2, batch = factor(df$batch), order=factor(df$order_in_batch))
+
+
+p_after_time <- plot_pca(plot_df_after, "order",
+                    "",
+                    scale_time)
+p_after_batch <- plot_pca(plot_df_after, "batch",
+                    "",
+                    scale_batch)
+
+p_after_time + p_after_batch +
+  plot_annotation(
+    title = "PCA on X after orthogonalization to both components"
+  )
+
+```
+## Percentage of Variance eliminated 
+
+```{r}
+# Funció auxiliar: suma de quadrats (variància total)
+total_var <- function(mat) {
+  mat_centered <- scale(mat, center = TRUE, scale = FALSE)
+  sum(mat_centered^2)
+}
+
+# Variància original
+var_orig <- total_var(X)
+
+# Correcció per batch
+oc_batch <- orthogonal_correction(X, pc1_batch_means)
+var_batch_corr <- total_var(oc_batch$corrected)
+var_batch_proj <- total_var(oc_batch$projection)
+
+# Correcció per ordre
+oc_order <- orthogonal_correction(X, pc1_order_means)
+var_order_corr <- total_var(oc_order$corrected)
+var_order_proj <- total_var(oc_order$projection)
+
+# Correcció combinada
+oc_both <- orthogonal_correction(oc_batch$corrected, pc1_order_means)
+var_both_corr <- total_var(oc_both$corrected)
+var_both_proj <- total_var(oc_batch$projection) + total_var(oc_both$projection)
+
+# Resultats en %
+perc_batch <- 100 * var_batch_proj / var_orig
+perc_order <- 100 * var_order_proj / var_orig
+perc_both  <- 100 * var_both_proj  / var_orig
+
+data.frame(
+  Correction = c("Batch", "Order", "Both"),
+  Variance_removed_percent = c(perc_batch, perc_order, perc_both)
+)
+
+```
+
+# Discussion
+
+## Percentage of Variance eliminated: old method (direct orthogonalisation) vs new (PC1-based)
+
+
+```{r, echo=FALSE}
+# --- New (PC1 de batch i order) ---
+oc_batch <- orthogonal_correction(X, pc1_batch_means)
+var_new_batch <- total_var(oc_batch$projection)
+
+oc_order <- orthogonal_correction(X, pc1_order_means)
+var_new_order <- total_var(oc_order$projection)
+
+oc_both  <- orthogonal_correction(oc_batch$corrected, pc1_order_means)
+var_new_both <- var_new_batch + total_var(oc_both$projection)
+
+# --- Old (directe amb variables externes) ---
+oc_batch_ext <- orthogonal_correction(X, as.numeric(df$batch))
+var_old_batch <- total_var(oc_batch_ext$projection)
+
+oc_time_ext  <- orthogonal_correction(X, df$elapsed_time)
+var_old_time <- total_var(oc_time_ext$projection)
+
+oc_both_ext  <- orthogonal_correction(oc_batch_ext$corrected, df$elapsed_time)
+var_old_both <- var_old_batch + total_var(oc_both_ext$projection)
+
+df_old <- data.frame(
+  Component = c("Batch", "Elapsed time", "Both"),
+  Variance_removed_percent = round(
+    100 * c(var_old_batch, var_old_time, var_old_both) / var_orig, 2
+  )
+)
+
+df_new <- data.frame(
+  Component = c("Batch", "Order", "Both"),
+  Variance_removed_percent = round(
+    100 * c(var_batch_corr, var_new_order, var_new_both) / var_orig, 2
+  )
+)
+
+kable(df_old, caption = "Old method (direct orthogonalization)") %>%
+  kable_styling(full_width = FALSE, position = "center")
+
+kable(df_new, caption = "New method (PC1-based orthogonalization)") %>%
+  kable_styling(full_width = FALSE, position = "center")
+
+
+```
+
+
+**=> Millorem lleugerament els resultats respecte el mètode anterior**

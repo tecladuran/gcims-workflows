@@ -1,0 +1,353 @@
+---
+title: "Stability After Batch Correction: 1 PC vs 2 PCs"
+author: "Tecla Duran Fort"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: yes
+    fig_caption: yes
+  html_document:
+    toc: yes
+    df_print: paged
+  github_document:
+    toc: yes
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.path = "stability_batch_pcs_files/figure-latex/")
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(lubridate)
+library(reshape2)
+library(BiocParallel)
+library(skimr)
+library(kableExtra)
+library(ggpubr)
+library(MASS) 
+library(cowplot)
+library(RColorBrewer)
+
+source("../../load_gcims_tools.R")
+```
+
+```{r utils, echo=FALSE}
+# -------- Helpers (kept minimal; comments in English) --------
+plot_pca <- function(scores_df, color_var, title, color_scale) {
+  ggplot(scores_df, aes_string(x = "PC1", y = "PC2", color = color_var)) +
+    geom_point(size = 2) +
+    color_scale +
+    theme_minimal() +
+    labs(title = title, x = attr(scores_df, "axis_labels")[1], y = attr(scores_df, "axis_labels")[2]) +
+    theme(plot.title = element_text(size = 12, hjust = 0.5))
+}
+
+axis_labels_from_pca <- function(pca_obj) {
+  var_exp <- pca_obj$sdev^2 / sum(pca_obj$sdev^2)
+  c(sprintf("PC1 (%.1f%%)", 100*var_exp[1]),
+    sprintf("PC2 (%.1f%%)", 100*var_exp[2]))
+}
+
+rsd_vec <- function(x) {
+  m <- mean(x, na.rm = TRUE)
+  s <- sd(x, na.rm = TRUE)
+  ifelse(is.na(m) | abs(m) < .Machine$double.eps, NA_real_, 100*s/abs(m))
+}
+
+# Colors
+scale_batch <- scale_color_discrete()
+pal3 <- brewer.pal(9, "YlGnBu")[c(3,6,9)]
+```
+
+# Load Data
+
+```{r load-data}
+df <- read.csv("../../data/peak_table_var.csv")
+
+# Peak table matrix (samples x peaks)
+X <- as.matrix(df %>% dplyr::select(starts_with("Cluster")))
+stopifnot(nrow(X) == nrow(df))
+
+# Batch encoding
+batch <- df$batch
+nbatch <- length(unique(batch))
+B <- model.matrix(~ 0 + factor(batch))
+colnames(B) <- paste0("Batch_", sort(unique(batch)))
+```
+
+# Correcting Only Batch
+
+## Setup
+```{r batch-means-pca}
+# Batch-wise means (samples -> batches)
+batch_sizes <- as.vector(t(B) %*% rep(1, nrow(X)))
+batch_sums  <- t(B) %*% X
+M           <- sweep(batch_sums, 1, batch_sizes, "/")  # (nbatch x nvars)
+
+# Map means back to sample space (scores live in sample space)
+X_batch_means <- B %*% M
+
+# PCA on batch-wise mean intensities
+pca_batch <- prcomp(X_batch_means, scale. = TRUE)
+pc_scores <- pca_batch$x            # (samples x PCs) -> sample-space PCs
+pc_axis   <- axis_labels_from_pca(pca_batch)
+```
+
+## Build 1-PC and 2-PC Batch Corrections
+
+```{r build-corrections}
+# 1 PC removal: project out PC1 from X
+X_batch_1PC <- orthogonal_correction(X, pc_scores[,1])$corrected
+
+# 2 PCs removal: sequentially remove PC1 then PC2
+X_batch_2PC <- orthogonal_correction(orthogonal_correction(X, pc_scores[,1])$corrected, pc_scores[,2])$corrected
+```
+
+## Results
+
+### Stability (RSD) Before vs After
+
+```{r rsd-computation}
+# RSD per peak (column-wise)
+rsd_before   <- apply(X,            2, rsd_vec)
+rsd_after_1  <- apply(X_batch_1PC,  2, rsd_vec)
+rsd_after_2  <- apply(X_batch_2PC,  2, rsd_vec)
+
+rsd_long <- tibble(
+  peak = colnames(X),
+  Original = rsd_before,
+  `Batch-1PC` = rsd_after_1,
+  `Batch-2PC` = rsd_after_2
+) |>
+  pivot_longer(-peak, names_to = "State", values_to = "RSD") |>
+  filter(!is.na(RSD))
+rsd_long$State <- factor(rsd_long$State,
+                         levels = c("Original", "Batch-1PC", "Batch-2PC"))
+# Quick summary table
+rsd_summary <- rsd_long |>
+  group_by(State) |>
+  summarize(
+    n = n(),
+    median_RSD = median(RSD),
+    mean_RSD = mean(RSD),
+    pct_RSD_lt_20 = mean(RSD < 20)*100,
+    .groups = "drop"
+  )
+
+kable(rsd_summary, digits = 2, caption = "RSD summary by state") |>
+  kable_styling(full_width = FALSE, position = "center")
+```
+\newpage
+
+#### Histograms
+
+```{r rsd-hist, fig.width=7, fig.height=4, echo=FALSE}
+ggplot(rsd_long, aes(x = RSD, fill = State)) +
+  geom_histogram(position = "identity", alpha = 0.45, bins = 30) +
+  scale_fill_manual(values = pal3) +
+  theme_minimal() +
+  labs(title = "Peak-wise RSD distributions",
+       x = "RSD (%)", y = "Count", fill = "State")
+```
+
+```{r rsd-hist2, fig.width=12, fig.height=3, echo=FALSE}
+ggplot(rsd_long, aes(x = RSD, fill = State)) +
+  geom_histogram(alpha = 0.7, bins = 20, color = "white") +
+  scale_fill_manual(values = pal3) +
+  facet_wrap(~State, nrow = 1) +
+  theme_minimal(base_size = 11) +
+  labs(title = "RSD distributions",
+       x = "RSD (%)", y = "Count")
+```
+
+
+#### Violin plots
+.
+
+```{r rsd-violin, fig.width=6, fig.height=3, echo=FALSE}
+ggplot(rsd_long, aes(x = State, y = RSD, fill = State)) +
+  geom_violin(trim = FALSE, alpha = 0.5, color = NA) +
+  geom_boxplot(width = 0.12, outlier.size = 0.7, alpha = 0.6) +
+  scale_fill_manual(values = pal3) +
+  theme_minimal(base_size = 11) +
+  labs(title = "RSD distributions",
+       x = "State", y = "RSD (%)") +
+  theme(legend.position = "none")
+```
+
+\newpage
+### PCA Colored by Batch
+
+```{r pca-before, fig.width=6, fig.height=4, echo=FALSE}
+pca_orig <- prcomp(X, scale. = TRUE)
+scores_orig <- as.data.frame(pca_orig$x)[,1:2]
+colnames(scores_orig) <- c("PC1","PC2")
+scores_orig$batch <- factor(batch)
+attr(scores_orig, "axis_labels") <- axis_labels_from_pca(pca_orig)
+
+plot_pca(scores_orig, "batch", "PCA (Original) — colored by Batch", scale_batch)
+```
+
+```{r pca-1pc, fig.width=6, fig.height=4, echo=FALSE}
+pca_1 <- prcomp(X_batch_1PC, scale. = TRUE)
+scores_1 <- as.data.frame(pca_1$x)[,1:2]
+colnames(scores_1) <- c("PC1","PC2")
+scores_1$batch <- factor(batch)
+attr(scores_1, "axis_labels") <- axis_labels_from_pca(pca_1)
+
+plot_pca(scores_1, "batch", "PCA (Batch correction: remove 1 PC)", scale_batch)
+```
+
+```{r pca-2pc, fig.width=6, fig.height=4, echo=FALSE}
+pca_2 <- prcomp(X_batch_2PC, scale. = TRUE)
+scores_2 <- as.data.frame(pca_2$x)[,1:2]
+colnames(scores_2) <- c("PC1","PC2")
+scores_2$batch <- factor(batch)
+attr(scores_2, "axis_labels") <- axis_labels_from_pca(pca_2)
+
+plot_pca(scores_2, "batch", "PCA (Batch correction: remove 2 PCs)", scale_batch)
+```
+
+# Results Correcting Order (time) First
+
+```{r corr}
+order_in_batch <- df %>%
+  arrange(batch, elapsed_time) %>%
+  group_by(batch) %>%
+  mutate(order_in_batch = row_number()) %>%
+  pull(order_in_batch)
+
+# One-hot d'ordre
+max_order <- max(order_in_batch)
+O <- model.matrix(~ 0 + factor(order_in_batch, levels = 1:max_order))
+
+# Mitjanes per ordre i PCA per obtenir PC1 en espai de mostres
+order_sizes <- as.vector(t(O) %*% rep(1, nrow(X)))
+order_sums  <- t(O) %*% X
+M_order     <- sweep(order_sums, 1, order_sizes, "/")
+X_order_means <- O %*% M_order
+
+pca_order <- prcomp(X_order_means, scale. = TRUE)
+pc_order  <- pca_order$x[, 1]
+
+# Correcció per ordre
+X_order_corr <- orthogonal_correction(X, pc_order)$corrected
+
+# Batch PCs (sobre mitjanes de batch després de corregir temps)
+B <- model.matrix(~ 0 + factor(batch))
+batch_sizes <- as.vector(t(B) %*% rep(1, nrow(X)))
+batch_sums  <- t(B) %*% X_order_corr
+M_batch     <- sweep(batch_sums, 1, batch_sizes, "/")
+X_batch_means <- B %*% M_batch
+pca_batch <- prcomp(X_batch_means, scale. = TRUE)
+pc_scores <- pca_batch$x
+
+# Versions 1PC i 2PC
+X_order_batch_1PC <- orthogonal_correction(X_order_corr, pc_scores[,1])$corrected
+X_order_batch_2PC <- orthogonal_correction(
+  orthogonal_correction(X_order_corr, pc_scores[,1])$corrected, 
+  pc_scores[,2])$corrected
+
+```
+
+
+```{r order-corr-stab, echo=FALSE}
+rsd_order       <- apply(X_order_corr,        2, rsd_vec)
+rsd_order_1pc   <- apply(X_order_batch_1PC,   2, rsd_vec)
+rsd_order_2pc   <- apply(X_order_batch_2PC,   2, rsd_vec)
+
+rsd_long <- tibble::tibble(
+  peak = colnames(X),
+  Original = rsd_before,
+  `After Order`      = rsd_order,
+  `Order+Batch-1PC`  = rsd_order_1pc,
+  `Order+Batch-2PC`  = rsd_order_2pc
+) |>
+  tidyr::pivot_longer(-peak, names_to="State", values_to="RSD") |>
+  dplyr::filter(!is.na(RSD))
+
+
+rsd_long$State <- factor(rsd_long$State,
+                         levels = c("Original","After Order","Order+Batch-1PC","Order+Batch-2PC"))
+
+# Paleta i petites utilitats de PCA
+pal4 <- RColorBrewer::brewer.pal(9, "YlGnBu")[c(3,5,7,9)]
+axis_labels_from_pca <- function(p){ v<-p$sdev^2/sum(p$sdev^2); c(sprintf("PC1 (%.1f%%",100*v[1]), sprintf("PC2 (%.1f%%",100*v[2])) }
+
+# PCA scores per a les tres versions
+pca_o <- prcomp(X_order_corr, scale.=TRUE)
+sc_o <- as.data.frame(pca_o$x)[,1:2]; names(sc_o)<-c("PC1","PC2"); sc_o$batch<-factor(batch); attr(sc_o,"axis")<-axis_labels_from_pca(pca_o)
+
+pca_1 <- prcomp(X_order_batch_1PC, scale.=TRUE)
+sc_1 <- as.data.frame(pca_1$x)[,1:2]; names(sc_1)<-c("PC1","PC2"); sc_1$batch<-factor(batch); attr(sc_1,"axis")<-axis_labels_from_pca(pca_1)
+
+pca_2 <- prcomp(X_order_batch_2PC, scale.=TRUE)
+sc_2 <- as.data.frame(pca_2$x)[,1:2]; names(sc_2)<-c("PC1","PC2"); sc_2$batch<-factor(batch); attr(sc_2,"axis")<-axis_labels_from_pca(pca_2)
+
+plot_pca <- function(d, color_var, title){
+  ggplot2::ggplot(d, ggplot2::aes_string("PC1","PC2", color=color_var))+
+    ggplot2::geom_point(size=2)+
+    ggplot2::scale_color_discrete()+
+    ggplot2::theme_minimal()+
+    ggplot2::labs(title=title,
+      x=attr(d,"axis")[1], y=attr(d,"axis")[2])+
+    ggplot2::theme(plot.title = ggplot2::element_text(size=12, hjust=0.5))
+}
+```
+
+```{r, echo=FALSE}
+# Resum 
+rsd_summary <- rsd_long |>
+  dplyr::group_by(State) |>
+  dplyr::summarize(
+    n = dplyr::n(),
+    median_RSD = stats::median(RSD),
+    mean_RSD = mean(RSD),
+    pct_under_20 = mean(RSD < 20) * 100,
+    .groups = "drop"
+  )
+
+kableExtra::kable(rsd_summary, digits = 2,
+                  caption = "RSD summary (Original, After Order, Order+Batch-1PC, Order+Batch-2PC)") |>
+  kableExtra::kable_styling(full_width = FALSE, position = "center")
+
+```
+
+
+```{r rsd-violins-2, fig.width=7, fig.height=4, echo=FALSE}
+ggplot2::ggplot(rsd_long, ggplot2::aes(x=State, y=RSD, fill=State)) +
+  ggplot2::geom_violin(trim=FALSE, alpha=0.5, color=NA) +
+  ggplot2::geom_boxplot(width=0.12, outlier.size=0.7, alpha=0.6) +
+  ggplot2::scale_fill_manual(values = pal4) +
+  ggplot2::theme_minimal(base_size = 11) +
+  ggplot2::labs(title = "RSD distributions", x = "", y = "RSD (%)") +
+  ggplot2::theme(legend.position = "none")
+```
+
+
+```{r rsd-hists-2, fig.width=10, fig.height=3, echo=FALSE}
+ggplot2::ggplot(rsd_long, ggplot2::aes(x=RSD, fill=State)) +
+  ggplot2::geom_histogram(alpha=0.7, bins=20, color="white") +
+  ggplot2::scale_fill_manual(values = pal4) +
+  ggplot2::facet_wrap(~State, nrow=1) +
+  ggplot2::theme_minimal(base_size = 11) +
+  ggplot2::labs(title = "RSD distributions", x = "RSD (%)", y = "Count")
+```
+
+```{r pca-order-2, fig.width=6, fig.height=4, echo=FALSE}
+plot_pca(sc_o, "batch", "PCA — After Order Correction")
+```
+
+```{r pca-1pc-2, fig.width=6, fig.height=4, echo=FALSE}
+plot_pca(sc_1, "batch", "PCA — Order+Batch (1PC)")
+```
+
+```{r pca-2pc-2, fig.width=6, fig.height=4, echo=FALSE}
+plot_pca(sc_2, "batch", "PCA — Order+Batch (2PC)")
+```
+
+
+  

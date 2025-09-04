@@ -1,0 +1,400 @@
+---
+title: "Finding Batch Influence"
+author: "Tecla Duran Fort"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: yes
+    fig_caption: yes
+  html_document:
+    toc: yes
+    df_print: paged
+always_allow_html: yes
+---
+
+# 0. Set Up
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.path = "batch_inf_files/figure-latex/")
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(lubridate)
+library(reshape2)
+library(BiocParallel)
+library(skimr)
+library(kableExtra)
+library(ggpubr)
+library(MASS) 
+library(cowplot)
+
+source("../../../load_gcims_tools.R")
+```
+
+# 1. Load Data
+
+Load Peak Table
+
+```{r load-data}
+df <- read.csv("../../../data/peak_table_var.csv")
+```
+## 1.1. Initial PCA 
+
+```{r pca-analysis, echo=FALSE, warning=FALSE, fig.width=12, fig.height=5}
+intensities <- df %>% dplyr::select(starts_with("Cluster"))
+# Scale intensities
+intensities_scaled <- scale(intensities)
+
+# PCA
+pca <- prcomp(intensities_scaled)
+
+# Explained variance
+explained_var <- summary(pca)$importance[2, ] * 100
+axis_labels <- paste0("PC", 1:2, " (", round(explained_var[1:2], 1), "%)")
+
+# PCA dataframe
+pca_df <- data.frame(PC1 = pca$x[,1], PC2 = pca$x[,2],
+                     Elapsed_Time = df$elapsed_time,
+                     Batch = as.factor(df$batch))
+
+# Custom plot function
+plot_pca <- function(data, color_var, title, color_scale) {
+  ggplot(data, aes_string(x = "PC1", y = "PC2", color = color_var)) +
+    geom_point(size = 2) +
+    color_scale +
+    theme_minimal() +
+    labs(title = title, x = axis_labels[1], y = axis_labels[2])+
+    theme(
+    plot.title = element_text(size = 12, hjust = 0.5))
+}
+
+p1<-plot_pca(pca_df, "Elapsed_Time", "PCA colored by Elapsed Time",
+         scale_color_gradientn(colours = hcl.colors(100, "YlGnBu")))
+
+p2<-plot_pca(pca_df, "Batch", "PCA colored by Batch",
+         scale_color_discrete())
+
+p1+p2
+```
+
+## 1.2. Time Correction and New PCA
+
+```{r apply-correction}
+intensities <- df %>% dplyr::select(starts_with("Cluster"))
+
+# Correction for elapsed time
+corr_time <- orthogonal_correction(intensities, df$elapsed_time)
+```
+
+```{r pca-analysis, echo=FALSE, warning=FALSE, fig.width=6, fig.height=5}
+intensities_corr_time <- corr_time$corrected
+# Scale intensities
+intensities_scaled_corr_time <- scale(intensities_corr_time)
+
+# PCA
+pca <- prcomp(intensities_scaled_corr_time)
+
+# Explained variance
+explained_var <- summary(pca)$importance[2, ] * 100
+axis_labels <- paste0("PC", 1:2, " (", round(explained_var[1:2], 1), "%)")
+
+# PCA dataframe
+pca_df <- data.frame(PC1 = pca$x[,1], PC2 = pca$x[,2],
+                     Elapsed_Time = df$elapsed_time,
+                     Batch = as.factor(df$batch))
+
+# Custom plot function
+plot_pca <- function(data, color_var, title, color_scale) {
+  ggplot(data, aes_string(x = "PC1", y = "PC2", color = color_var)) +
+    geom_point(size = 2) +
+    color_scale +
+    theme_minimal() +
+    labs(title = title, x = axis_labels[1], y = axis_labels[2])+
+    theme(
+    plot.title = element_text(size = 12, hjust = 0.5))
+}
+```
+
+# 2. Finding Batch Influence: Method Description
+
+
+## 1) Direccions “entre-batch” des de les dades (features) + vectors `q_i`
+
+```{r find-between-directions, echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2); library(dplyr); library(tidyr); library(patchwork)
+
+X  <- as.matrix(corr_time$corrected)   # n x p
+bF <- as.factor(df$batch)
+n  <- nrow(X)
+
+# (a) centrar per columnes
+Xc <- scale(X, center = TRUE, scale = FALSE)
+
+# (b) X_between: cada fila = mitjana del seu batch (en Xc)
+mu_by_batch <- rowsum(Xc, bF) / as.numeric(table(bF))   # k x p
+X_between   <- mu_by_batch[as.character(bF), , drop = FALSE]  # n x p
+
+# (c) SVD de X_between → vectors de mostra U_b (ortonormals)
+svb <- svd(X_between)
+d   <- svb$d
+rank_b <- sum(d > .Machine$double.eps)
+Q_all  <- svb$u[, seq_len(rank_b), drop = FALSE]    # n x m (m = rank_b ≤ k-1)
+
+# percentatge de variància "entre-batch" capturada per cada q_i (en X_between)
+frac_each <- (d[seq_len(rank_b)]^2) / sum(d^2)
+
+```
+
+---
+
+## 2) Demostració **iterativa** (sense *thresholds*): treure q1, després q1+q2, … i PCA’s
+
+```{r iterative-demo-no-thresholds, echo=FALSE, message=FALSE, warning=FALSE}
+# Funció per aplicar el projector acumulat sobre les primeres j columnes de Q_all
+apply_cumulative_Q <- function(Xc, Q, j) {
+  Qj <- Q[, seq_len(j), drop = FALSE]
+  P  <- diag(nrow(Xc)) - Qj %*% t(Qj)
+  P %*% Xc
+}
+
+# Variància total (dades centrades per columnes)
+total_var <- function(M) {
+  Mc <- scale(M, center = TRUE, scale = FALSE)
+  sum(apply(Mc, 2, var, na.rm = TRUE))
+}
+
+# Iteracions 0..rank_b, acumulant projectors
+tv_hist <- data.frame(iter = 0, total_var = total_var(X))
+pca_plots <- list()
+
+# PCA iter 0 (abans)
+p0 <- prcomp(scale(X))
+df0 <- data.frame(PC1=p0$x[,1], PC2=p0$x[,2], Batch=bF, Elapsed_Time=df$elapsed_time)
+pca_plots[[1]] <- plot_pca(df0, "Batch", "Iter 0 (abans)", scale_color_discrete())
+
+Xc_curr <- Xc
+for (j in 1:rank_b) {
+  Xc_curr <- apply_cumulative_Q(Xc, Q_all, j)  # projecte a l'ortogonal de span(q1..qj)
+  Xj <- sweep(Xc_curr, 2, colMeans(X, na.rm=TRUE), `+`)
+  tv_hist <- rbind(tv_hist, data.frame(iter = j, total_var = total_var(Xj)))
+
+  pj <- prcomp(scale(Xj))
+  dfj <- data.frame(PC1=pj$x[,1], PC2=pj$x[,2], Batch=bF, Elapsed_Time=df$elapsed_time)
+  pca_plots[[j+1]] <- plot_pca(dfj, "Batch", paste0("Iter ", j, " (trets q1..q", j, ")"), scale_color_discrete())
+}
+
+# Plots de variància total i variància treta per iteració
+tv_hist <- tv_hist |> mutate(removed = c(NA, diff(total_var)*-1),
+                             removed_pct = c(NA, -diff(total_var)/dplyr::lag(total_var)))
+
+p_tv <- ggplot(tv_hist, aes(iter, total_var)) +
+  geom_line() + geom_point() +
+  theme_minimal() +
+  labs(title="Variància total (centrada per columnes) per iteració",
+       x="Iteració (nº de q trets)", y="Total variance")
+
+p_r <- ggplot(tv_hist |> filter(iter>0), aes(iter, removed_pct)) +
+  geom_col() +
+  scale_y_continuous(labels = scales::percent_format(accuracy=0.1)) +
+  theme_minimal() +
+  labs(title="Variància treta a cada iteració",
+       x="Iteració", y="Treta / total anterior (%)")
+
+p_tv | p_r
+```
+
+```{r show-all-pcas, echo=FALSE, message=FALSE, warning=FALSE, fig.width=11, fig.height= 3 + 2.8*ceiling((rank_b+1)/2)}
+# Graella amb PCA 0..rank_b
+wrap_plots(pca_plots, ncol = 2)
+```
+
+---
+
+## Final Method
+
+```{r final-two-components, echo=FALSE, message=FALSE, warning=FALSE, fig.width=6, fig.height=4}
+# Agafem q1 i q2 de Q_all (si hi ha com a mínim 2 direccions)
+q1 <- Q_all[, 1, drop = FALSE]
+q2 <- if (rank_b >= 2) Q_all[, 2, drop = FALSE] else NULL
+
+# 1a passada
+oc1 <- orthogonal_correction(X, variable = q1[,1])
+X1  <- oc1$corrected
+
+# 2a passada (si hi ha q2)
+if (!is.null(q2)) {
+  oc2 <- orthogonal_correction(X1, variable = q2[,1])
+  X2  <- oc2$corrected
+} else {
+  X2 <- X1
+}
+
+# PCA final
+pca_final <- prcomp(scale(X2))
+df_final  <- data.frame(PC1=pca_final$x[,1], PC2=pca_final$x[,2],
+                        Batch=bF, Elapsed_Time=df$elapsed_time)
+plot_pca(df_final, "Batch", "PCA després de treure q1 i q2 amb orthogonal_correction", scale_color_discrete())
+```
+
+
+```{r}
+# ==========================================================
+# Find directions to remove (between-batch) with thresholds
+# ==========================================================
+find_influence <- function(X, batch,
+                           max_iter       = 8,
+                           min_rel_drop   = 0.01,   # stop if relative drop in total variance < 1%
+                           target_mean_r2 = NA_real_ # optionally stop if mean R^2 vs batch <= this
+) {
+  stopifnot(is.matrix(X) || is.data.frame(X))
+  X  <- as.matrix(X)
+  n  <- nrow(X)
+  bf <- as.factor(batch)
+
+  # -- Center columns (keep original feature scales)
+  Xc <- scale(X, center = TRUE, scale = FALSE)
+
+  # -- X_between: each row replaced by its batch mean (on centered data)
+  mu_by_batch <- rowsum(Xc, bf) / as.numeric(table(bf))   # k x p
+  X_between   <- mu_by_batch[as.character(bf), , drop = FALSE]  # n x p
+
+  # -- SVD(X_between): sample-space directions (orthonormal)
+  svb <- svd(X_between)
+  d   <- svb$d
+  m   <- sum(d > .Machine$double.eps)
+  if (m == 0) {
+    return(list(
+      n_selected = 0,
+      Q_used = NULL,
+      Q_all  = NULL,
+      svals  = numeric(0),
+      frac_each = numeric(0),
+      history = data.frame(iter = 0, total_var = total_variance(X),
+                           mean_R2 = NA_real_, rel_drop = NA_real_)
+    ))
+  }
+  Q_all <- svb$u[, seq_len(m), drop = FALSE]                  # n x m (q1..qm)
+  frac_each <- (d[seq_len(m)]^2) / sum(d^2)                   # importance in X_between
+
+  # -- Helpers
+  total_var <- function(M) {
+    Mc <- scale(M, center = TRUE, scale = FALSE)
+    sum(apply(Mc, 2, var, na.rm = TRUE))
+    # equival: sum(Mc^2) / (nrow(M)-1)
+  }
+  mean_r2_vs_batch <- function(M, batch_fac) {
+    r2 <- apply(M, 2, function(y) {
+      if (sd(y, na.rm = TRUE) == 0) return(0)
+      summary(lm(y ~ batch_fac))$r.squared
+    })
+    mean(r2, na.rm = TRUE)
+  }
+
+  # -- Baseline metrics
+  tv0 <- total_var(X)
+  mr0 <- if (is.na(target_mean_r2)) NA_real_ else mean_r2_vs_batch(X, bf)
+  history <- data.frame(iter = 0, total_var = tv0, mean_R2 = mr0, rel_drop = NA_real_)
+
+  # -- Try cumulative removal with first j columns of Q_all
+  n_selected <- 0
+  for (j in 1:min(m, max_iter)) {
+    Qj <- Q_all[, seq_len(j), drop = FALSE]
+    Pj <- diag(n) - Qj %*% t(Qj)
+    Xc_next <- Pj %*% Xc
+    X_next  <- sweep(Xc_next, 2, colMeans(X, na.rm = TRUE), `+`)
+
+    tv_prev <- history$total_var[j]
+    tv_now  <- total_var(X_next)
+    rel_drop <- (tv_prev - tv_now) / tv_prev
+    mr_now   <- if (is.na(target_mean_r2)) NA_real_ else mean_r2_vs_batch(X_next, bf)
+
+    history <- rbind(history, data.frame(iter = j, total_var = tv_now,
+                                         mean_R2 = mr_now, rel_drop = rel_drop))
+    n_selected <- j
+
+    # stopping rules
+    stop_by_drop <- !is.na(min_rel_drop) && rel_drop < min_rel_drop
+    stop_by_r2   <- !is.na(target_mean_r2) && !is.na(mr_now) && mr_now <= target_mean_r2
+    if (stop_by_drop || stop_by_r2) break
+  }
+
+  list(
+    n_selected = n_selected,
+    Q_used     = Q_all[, seq_len(n_selected), drop = FALSE],
+    Q_all      = Q_all,
+    svals      = d[seq_len(m)],
+    frac_each  = frac_each,
+    history    = history
+  )
+}
+
+# ==========================================================
+# Apply orthogonal_correction sequentially with given Q
+# ==========================================================
+
+apply_oc_with_Q <- function(X, Q_used) {
+  if (is.null(Q_used) || ncol(Q_used) == 0) return(X)
+  X_curr <- as.matrix(X)
+  for (j in seq_len(ncol(Q_used))) {
+    qj <- Q_used[, j, drop = FALSE][,1]
+    oc  <- orthogonal_correction(X_curr, variable = qj)
+    X_curr <- oc$corrected
+  }
+  X_curr
+}
+```
+
+```{r}
+# Trobar direccions amb thresholds (pots ajustar aquests valors)
+sel <- find_influence(
+  X = corr_time$corrected,
+  batch = df$batch,
+  max_iter = 8,
+  min_rel_drop = 0.1,   # para si la caiguda relativa < 1%
+  target_mean_r2 = 0.1    # o posa 0.05 si vols usar també R^2 mitjà
+)
+
+# Quants vectors s'han seleccionat i quina importància té cadascun (en X_between)
+sel$n_selected
+round(100 * sel$frac_each[seq_len(max(1, sel$n_selected))], 2)
+
+# Històric (variància total, R^2 mitjà si s'ha calculat, i caiguda relativa)
+knitr::kable(sel$history, digits = 3, caption = "Històric de selecció (TV, mean R^2, rel. drop)")
+
+# Visualitzar q1 i q2 (línia negra)
+library(ggplot2); library(patchwork)
+plots_q <- list()
+if (ncol(sel$Q_used) >= 1) {
+  p_q1 <- ggplot(data.frame(Index=1:nrow(sel$Q_used), q=as.numeric(sel$Q_used[,1])),
+                 aes(Index, q)) + geom_line(color="black") + theme_minimal() +
+    labs(title="q1 (seleccionat)", x="Índex", y="valor")
+  plots_q[[1]] <- p_q1
+}
+if (ncol(sel$Q_used) >= 2) {
+  p_q2 <- ggplot(data.frame(Index=1:nrow(sel$Q_used), q=as.numeric(sel$Q_used[,2])),
+                 aes(Index, q)) + geom_line(color="black") + theme_minimal() +
+    labs(title="q2 (seleccionat)", x="Índex", y="valor")
+  plots_q[[2]] <- p_q2
+}
+if (length(plots_q) > 0) { wrap_plots(plots_q, ncol = length(plots_q)) }
+
+```
+```{r}
+# Dades després d'aplicar q1..qL amb el teu orthogonal_correction
+X_corr_final <- apply_oc_with_Q(corr_time$corrected, sel$Q_used)
+
+# PCA final per visualitzar (mateixa convenció que uses: features escalades)
+pca_final <- prcomp(scale(X_corr_final))
+pca_df_final <- data.frame(
+  PC1 = pca_final$x[,1], PC2 = pca_final$x[,2],
+  Batch = as.factor(df$batch),
+  Elapsed_Time = df$elapsed_time
+)
+plot_pca(pca_df_final, "Batch",
+         sprintf("PCA després d'aplicar orthogonal_correction amb %d vector(s)", sel$n_selected),
+         scale_color_discrete())
+```
+

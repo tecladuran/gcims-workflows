@@ -1,0 +1,764 @@
+---
+title: "Finding Batch Influence"
+author: "Tecla Duran Fort"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: yes
+    fig_caption: yes
+  html_document:
+    toc: yes
+    df_print: paged
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.path = "batch_inf_files/figure-latex/")
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(lubridate)
+library(reshape2)
+library(BiocParallel)
+library(skimr)
+library(kableExtra)
+library(ggpubr)
+library(MASS) 
+library(cowplot)
+
+source("../../load_gcims_tools.R")
+```
+
+Load Peak Table
+
+```{r load-data}
+df <- read.csv("../../data/peak_table_var.csv")
+```
+
+# Principal Component Analysis
+
+We will use Principal Component Analysis (PCA) as an **exploratory tool** to assess how **elapsed time** and **batch number** influence the intensity variations of the clusters.
+
+We will plot the first two principal components (PC1 and PC2), which capture the most significant variance in the data. If we observe clear patterns or separations in the plots, it suggests that these factors are influencing the measurements.
+
+Additionally, we will evaluate the explained variance by the first few components to understand how much of the overall variability in the data is captured by each component.
+
+```{r pca-analysis, echo=FALSE, warning=FALSE, fig.width=6, fig.height=5}
+intensities <- df %>% dplyr::select(starts_with("Cluster"))
+# Scale intensities
+intensities_scaled <- scale(intensities)
+
+# PCA
+pca <- prcomp(intensities_scaled)
+
+# Explained variance
+explained_var <- summary(pca)$importance[2, ] * 100
+axis_labels <- paste0("PC", 1:2, " (", round(explained_var[1:2], 1), "%)")
+
+# PCA dataframe
+pca_df <- data.frame(PC1 = pca$x[,1], PC2 = pca$x[,2],
+                     Elapsed_Time = df$elapsed_time,
+                     Batch = as.factor(df$batch))
+
+# Custom plot function
+plot_pca <- function(data, color_var, title, color_scale) {
+  ggplot(data, aes_string(x = "PC1", y = "PC2", color = color_var)) +
+    geom_point(size = 2) +
+    color_scale +
+    theme_minimal() +
+    labs(title = title, x = axis_labels[1], y = axis_labels[2])+
+    theme(
+    plot.title = element_text(size = 12, hjust = 0.5))
+}
+```
+
+```{r pca-elapsed, echo=FALSE, warning=FALSE, fig.width=6, fig.height=4, fig.align='center',fig.cap = "PCA plot of cluster intensities colored by elapsed time", fig.pos='H'}
+plot_pca(pca_df, "Elapsed_Time", "PCA colored by Elapsed Time",
+         scale_color_gradientn(colours = hcl.colors(100, "YlGnBu")))
+```
+
+```{r pca-batch, echo=FALSE, warning=FALSE, fig.width=5.5, fig.height=4, fig.align='center', fig.cap = "PCA plot of cluster intensities colored by batch number", fig.pos='H'}
+plot_pca(pca_df, "Batch", "PCA colored by Batch",
+         scale_color_discrete())
+```
+
+```{r explained-variance-barplot, echo=FALSE, warning=FALSE, fig.width=4, fig.height=3, fig.align='center', fig.cap = "Percentage of total variance explained by the first five principal components", fig.pos='H'}
+# Explained variance barplot (smaller)
+explained_df <- data.frame(Component = paste0("PC", 1:5), Variance = explained_var[1:5])
+
+ggplot(explained_df, aes(x = Component, y = Variance)) +
+  geom_bar(stat = "identity", fill = "#A8DADC") +
+  theme_minimal() +
+  labs(title = "Explained Variance by Principal Components",
+       x = "Principal Component", y = "Explained Variance (%)") +
+  scale_y_continuous(labels = scales::percent_format(scale = 1))
+```
+
+
+# Linear Correction
+
+The following function implements a linear orthogonalization procedure that removes the component of the signal aligned with a known external variable (e.g., elapsed time or batch index). This is achieved by computing the projection of each variable onto the centered external variable and subtracting it from the data.
+
+The function returns both the corrected data and the removed projection component.
+
+```{r orth-function}
+orthogonal_correction <- function(data, variable){
+  data_mean <- colMeans(data)
+  variable_mean <- mean(variable)
+  data_centered <- sweep(data, 2, data_mean, "-")
+  variable_centered <- variable - variable_mean
+  scores <- as.numeric(t(data_centered) %*% variable_centered / sum(variable_centered^2))
+  projection <- outer(variable_centered, scores)
+  corrected_data <- data_centered - projection
+  corrected_data <- sweep(corrected_data, 2, data_mean, "+")
+  return(list(corrected = corrected_data, projection = projection))
+}
+```
+
+## Correcting Elapsed Time
+
+```{r apply-correction}
+intensities <- df %>% dplyr::select(starts_with("Cluster"))
+
+# Correction for elapsed time
+corr_time <- orthogonal_correction(intensities, df$elapsed_time)
+intensities_time_corr <- corr_time$corrected
+
+# Components for visualization
+time_projection <- corr_time$projection
+```
+
+# Finding Batch Influence
+
+## Visualization: PCA of Time-Corrected Intensities
+
+```{r pca-analysis, echo=FALSE, warning=FALSE, fig.width=6, fig.height=5}
+intensities_corr_time <- corr_time$corrected
+# Scale intensities
+intensities_scaled_corr_time <- scale(intensities_corr_time)
+
+# PCA
+pca <- prcomp(intensities_scaled_corr_time)
+
+# Explained variance
+explained_var <- summary(pca)$importance[2, ] * 100
+axis_labels <- paste0("PC", 1:2, " (", round(explained_var[1:2], 1), "%)")
+
+# PCA dataframe
+pca_df <- data.frame(PC1 = pca$x[,1], PC2 = pca$x[,2],
+                     Elapsed_Time = df$elapsed_time,
+                     Batch = as.factor(df$batch))
+
+# Custom plot function
+plot_pca <- function(data, color_var, title, color_scale) {
+  ggplot(data, aes_string(x = "PC1", y = "PC2", color = color_var)) +
+    geom_point(size = 2) +
+    color_scale +
+    theme_minimal() +
+    labs(title = title, x = axis_labels[1], y = axis_labels[2])+
+    theme(
+    plot.title = element_text(size = 12, hjust = 0.5))
+}
+```
+
+
+```{r pca-batch, echo=FALSE, warning=FALSE, fig.width=5.5, fig.height=4, fig.align='center', fig.cap = "PCA plot of cluster intensities colored by batch number", fig.pos='H'}
+plot_pca(pca_df, "Batch", "PCA colored by Batch",
+         scale_color_discrete())
+```
+
+```{r explained-variance-barplot, echo=FALSE, warning=FALSE, fig.width=4, fig.height=3, fig.align='center', fig.cap = "Percentage of total variance explained by the first five principal components", fig.pos='H'}
+# Explained variance barplot (smaller)
+explained_df <- data.frame(Component = paste0("PC", 1:5), Variance = explained_var[1:5])
+
+ggplot(explained_df, aes(x = Component, y = Variance)) +
+  geom_bar(stat = "identity", fill = "#A8DADC") +
+  theme_minimal() +
+  labs(title = "Explained Variance by Principal Components",
+       x = "Principal Component", y = "Explained Variance (%)") +
+  scale_y_continuous(labels = scales::percent_format(scale = 1))
+```
+
+## Method 1
+
+---
+
+# 0) Preparació i helpers
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+# Inputs
+X  <- as.matrix(corr_time$corrected)   # n x p
+n  <- nrow(X)
+batch_fac <- as.factor(df$batch)
+
+# Column-centering (keep original feature scales)
+col_means <- colMeans(X, na.rm = TRUE)
+Xc <- scale(X, center = TRUE, scale = FALSE)
+
+# PCA (BEFORE) for reference and plotting (you used scaled features)
+pca_before <- prcomp(scale(X))
+explained_var_before <- summary(pca_before)$importance[2, ] * 100
+axis_labels_before <- paste0("PC", 1:2, " (", round(explained_var_before[1:2], 1), "%)")
+pca_df_before <- data.frame(
+  PC1 = pca_before$x[,1],
+  PC2 = pca_before$x[,2],
+  Elapsed_Time = df$elapsed_time,
+  Batch = batch_fac
+)
+
+# Helper: mean per-feature R^2 vs batch (your metric)
+mean_r2_vs_batch <- function(M, batch) {
+  bf <- as.factor(batch)
+  r2 <- apply(M, 2, function(y) {
+    if (sd(y, na.rm = TRUE) == 0) return(0)
+    summary(lm(y ~ bf))$r.squared
+  })
+  mean(r2, na.rm = TRUE)
+}
+```
+
+---
+
+# 1) **PCA-guia en espai de mostres (via U\_hat) — treure TOT el subespai “de batch”**
+
+> Aquí s’extreu el **subespai complet** associat a batch (equivalent a residualitzar per *feature* però construït via PCA en espai de mostres).
+
+```{r methodA_full_Uhat, echo=FALSE, message=FALSE, warning=FALSE}
+# 1) SVD scores in sample space
+sv <- svd(Xc)           # Xc = U S V^T
+U  <- sv$u              # n x r (orthonormal)
+
+# 2) Batch "hat" (one-hot); equivalent to ave( , batch, mean) per column
+E_batch <- model.matrix(~ 0 + batch_fac)                 # n x k
+PE <- E_batch %*% ginv(t(E_batch) %*% E_batch) %*% t(E_batch)
+
+# 3) U_hat: scores explained by batch (between-batch part)
+U_hat <- PE %*% U
+
+# 4) Orthonormal basis of col(U_hat) and projector
+qrU <- qr(U_hat); m <- qrU$rank
+if (m > 0) {
+  Q_full <- qr.Q(qrU)[, seq_len(m), drop = FALSE]  # n x m (orthonormal)
+  P_full <- diag(n) - Q_full %*% t(Q_full)
+  XcorrA_c <- P_full %*% Xc                        # corrected (still centered)
+} else {
+  Q_full <- matrix(, nrow = n, ncol = 0)
+  XcorrA_c <- Xc
+}
+
+# Back to absolute levels (if needed downstream)
+intensities_corr_time_batch_A_full <- sweep(XcorrA_c, 2, col_means, `+`)
+
+# PCA AFTER
+pca_A <- prcomp(scale(intensities_corr_time_batch_A_full))
+explained_A <- summary(pca_A)$importance[2,]*100
+axis_labels_A <- paste0("PC", 1:2, " (", round(explained_A[1:2], 1), "%)")
+
+pca_df_A <- data.frame(
+  PC1 = pca_A$x[,1], PC2 = pca_A$x[,2],
+  Elapsed_Time = df$elapsed_time, Batch = batch_fac
+)
+
+# R2 metric
+r2_before <- mean_r2_vs_batch(X, batch_fac)
+r2_A      <- mean_r2_vs_batch(intensities_corr_time_batch_A_full, batch_fac)
+```
+
+**PCA abans vs després (Mètode A – subespai complet)**
+
+```{r plotA, echo=FALSE, message=FALSE, warning=FALSE, fig.width=11, fig.height=4}
+p1 <- plot_pca(pca_df_before, "Batch", "BEFORE (time-corrected only)", scale_color_discrete()) +
+  labs(x = axis_labels_before[1], y = axis_labels_before[2])
+pA <- plot_pca(pca_df_A, "Batch", "AFTER A: remove full batch subspace (via U_hat)", scale_color_discrete()) +
+  labs(x = axis_labels_A[1], y = axis_labels_A[2])
+p1+pA
+```
+
+---
+
+# 2) **Per-*feature***: treure la **mitjana per batch** a cada columna + PCA
+
+> Equivalent a residualitzar `y ~ batch` per a cada columna.
+
+```{r methodB_per_feature, echo=FALSE, message=FALSE, warning=FALSE}
+# Per-feature residualization: (I - PE) Xc
+XcorrB_c <- (diag(n) - PE) %*% Xc
+intensities_corr_time_batch_B_feature <- sweep(XcorrB_c, 2, col_means, `+`)
+
+pca_B <- prcomp(scale(intensities_corr_time_batch_B_feature))
+explained_B <- summary(pca_B)$importance[2,]*100
+axis_labels_B <- paste0("PC", 1:2, " (", round(explained_B[1:2], 1), "%)")
+
+pca_df_B <- data.frame(
+  PC1 = pca_B$x[,1], PC2 = pca_B$x[,2],
+  Elapsed_Time = df$elapsed_time, Batch = batch_fac
+)
+
+r2_B <- mean_r2_vs_batch(intensities_corr_time_batch_B_feature, batch_fac)
+```
+
+---
+
+# 3) **Només UNA direcció** (rank-1) via U\_hat
+
+> Correcció **suau**: treu només el patró dominant “entre-batch”.
+
+```{r methodC_rank1_Uhat, echo=FALSE, message=FALSE, warning=FALSE}
+# Reuse U_hat from Method A
+if (qrU$rank > 0) {
+  q1 <- qr.Q(qrU)[, 1, drop = FALSE]   # n x 1 (unit)
+  P1 <- diag(n) - q1 %*% t(q1)
+  XcorrC_c <- P1 %*% Xc
+} else {
+  XcorrC_c <- Xc
+}
+
+intensities_corr_time_batch_C_rank1 <- sweep(XcorrC_c, 2, col_means, `+`)
+
+pca_C <- prcomp(scale(intensities_corr_time_batch_C_rank1))
+explained_C <- summary(pca_C)$importance[2,]*100
+axis_labels_C <- paste0("PC", 1:2, " (", round(explained_C[1:2], 1), "%)")
+
+pca_df_C <- data.frame(
+  PC1 = pca_C$x[,1], PC2 = pca_C$x[,2],
+  Elapsed_Time = df$elapsed_time, Batch = batch_fac
+)
+
+r2_C <- mean_r2_vs_batch(intensities_corr_time_batch_C_rank1, batch_fac)
+```
+
+---
+
+# 4) **Sense passar per U** (features directament): construir $X_{\text{between}}$
+
+> Aquí fem el mateix però partint directament de les **features**: substituïm cada fila per la **mitjana del seu batch** i n’extraiem la direcció dominant.
+
+```{r methodD_direct_features, echo=FALSE, message=FALSE, warning=FALSE}
+# Build X_between directly (each row replaced by its batch mean in Xc)
+mu_by_batch <- rowsum(Xc, batch_fac) / as.numeric(table(batch_fac))   # k x p
+X_between   <- mu_by_batch[as.character(batch_fac), , drop = FALSE]   # n x p
+
+# (D1) Rank-1 removal from X_between (q1 from SVD of X_between)
+svb <- svd(X_between)
+q1d <- svb$u[, 1, drop = FALSE]   # n x 1
+P1d <- diag(n) - q1d %*% t(q1d)
+XcorrD1_c <- P1d %*% Xc
+intensities_corr_time_batch_D_rank1 <- sweep(XcorrD1_c, 2, col_means, `+`)
+
+pca_D1 <- prcomp(scale(intensities_corr_time_batch_D_rank1))
+explained_D1 <- summary(pca_D1)$importance[2,]*100
+axis_labels_D1 <- paste0("PC", 1:2, " (", round(explained_D1[1:2], 1), "%)")
+pca_df_D1 <- data.frame(
+  PC1 = pca_D1$x[,1], PC2 = pca_D1$x[,2],
+  Elapsed_Time = df$elapsed_time, Batch = batch_fac
+)
+
+r2_D1 <- mean_r2_vs_batch(intensities_corr_time_batch_D_rank1, batch_fac)
+
+# (D2) Full between-batch subspace from features (equivalent to per-feature)
+# Orthonormal basis of col(X_between)
+qrXb <- qr(X_between); md <- qrXb$rank
+if (md > 0) {
+  Qd_full <- qr.Q(qrXb)[, seq_len(md), drop = FALSE]
+  Pd_full <- diag(n) - Qd_full %*% t(Qd_full)
+  XcorrD2_c <- Pd_full %*% Xc
+} else {
+  XcorrD2_c <- Xc
+}
+intensities_corr_time_batch_D_full <- sweep(XcorrD2_c, 2, col_means, `+`)
+
+pca_D2 <- prcomp(scale(intensities_corr_time_batch_D_full))
+explained_D2 <- summary(pca_D2)$importance[2,]*100
+axis_labels_D2 <- paste0("PC", 1:2, " (", round(explained_D2[1:2], 1), "%)")
+pca_df_D2 <- data.frame(
+  PC1 = pca_D2$x[,1], PC2 = pca_D2$x[,2],
+  Elapsed_Time = df$elapsed_time, Batch = batch_fac
+)
+
+r2_D2 <- mean_r2_vs_batch(intensities_corr_time_batch_D_full, batch_fac)
+```
+
+---
+
+# 5) **Comparació** (PCAs finals i R² mitjà vs batch)
+
+```{r compare-all-pcas, echo=FALSE, message=FALSE, warning=FALSE, fig.width=11, fig.height=8}
+# Assemble plots
+pA <- plot_pca(pca_df_A,  "Batch", "A) Full subspace via U_hat", scale_color_discrete()) +
+  labs(x = axis_labels_A[1],  y = axis_labels_A[2])
+pB <- plot_pca(pca_df_B,  "Batch", "B) Per-feature (residual y ~ batch)", scale_color_discrete()) +
+  labs(x = axis_labels_B[1],  y = axis_labels_B[2])
+pC <- plot_pca(pca_df_C,  "Batch", "C) Rank-1 via U_hat (q1)", scale_color_discrete()) +
+  labs(x = axis_labels_C[1],  y = axis_labels_C[2])
+pD1 <- plot_pca(pca_df_D1, "Batch", "D1) Rank-1 from X_between", scale_color_discrete()) +
+  labs(x = axis_labels_D1[1], y = axis_labels_D1[2])
+pD2 <- plot_pca(pca_df_D2, "Batch", "D2) Full subspace from X_between", scale_color_discrete()) +
+  labs(x = axis_labels_D2[1], y = axis_labels_D2[2])
+
+# Show BEFORE + four AFTERs
+cowplot::plot_grid(
+  p1, pA,
+  pB, pC,
+  pD1, pD2,
+  ncol = 2, labels = NULL, align = "hv"
+)
+```
+
+```{r compare-r2, echo=FALSE, message=FALSE, warning=FALSE}
+comparison <- data.frame(
+  Method = c("Before", "A) Full via U_hat", "B) Per-feature", "C) Rank-1 via U_hat", 
+             "D1) Rank-1 from X_between", "D2) Full from X_between"),
+  Mean_R2_vs_Batch = c(r2_before, r2_A, r2_B, r2_C, r2_D1, r2_D2)
+)
+knitr::kable(comparison, digits = 3, caption = "Mean per-feature R² vs batch (lower is better)")
+```
+
+---
+
+## Notes ràpides
+
+* **(1) A — “Full via U\_hat”**: treu **tot** el subespai “entre-batch” detectat en espai de mostres (equivalent sobre `X` a residualitzar per *feature*).
+
+* **(2) B — “Per-feature”**: residualitzar `y ~ batch` columna a columna.
+
+* **(3) C — “Rank-1 via U\_hat (q1)”**: treu **una sola direcció** (suau). Pots iterar si cal.
+
+* **(4) D — “Direct features”**:
+
+  * **D1 (rank-1)**: q1 des de `X_between` (mateixa idea, sense passar per `U`).
+  * **D2 (full)**: treu el subespai complet construït directament des de `X_between` (ha de coincidir pràcticament amb B/A).
+
+* **Comparació**: mira la graella de PCAs i la taula de **Mean R²**. Si **C** o **D1** redueixen prou el batch sense “aplanar” com B/A, tens una correcció **més suau** i defensable.
+
+
+```{r}
+library(MASS)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(patchwork)  # per composar plots fàcilment
+
+# ---------------------------
+# Inputs i helpers reutilitzats
+# ---------------------------
+X0  <- as.matrix(corr_time$corrected)   # n x p (time-corrected)
+n   <- nrow(X0)
+bF  <- as.factor(df$batch)
+
+# (ja ho tenies)
+mean_r2_vs_batch <- function(M, batch) {
+  bf <- as.factor(batch)
+  r2 <- apply(M, 2, function(y) {
+    if (sd(y, na.rm = TRUE) == 0) return(0)
+    summary(lm(y ~ bf))$r.squared
+  })
+  mean(r2, na.rm = TRUE)
+}
+
+# ---------------------------
+# Trobar q1 a partir de les DADES (features) — mètode "X_between"
+#   1) centra per columnes
+#   2) X_between: cada fila = mitjana del seu batch
+#   3) SVD(X_between) → q1 i % variància entre-batch capturada per q1
+# ---------------------------
+find_q1_from_Xbetween <- function(X, batch_fac) {
+  Xc <- scale(X, center = TRUE, scale = FALSE)
+  mu_by_batch <- rowsum(Xc, batch_fac) / as.numeric(table(batch_fac))   # k x p
+  X_between   <- mu_by_batch[as.character(batch_fac), , drop = FALSE]   # n x p
+
+  svb <- svd(X_between)
+  # Si no hi ha rang (no batch), retorna NULLs
+  if (length(svb$d) == 0 || svb$d[1] < .Machine$double.eps) {
+    return(list(q1 = NULL, frac = 0, Xc = Xc, X_between = X_between))
+  }
+  q1   <- svb$u[, 1, drop = FALSE]                     # n x 1 (unit)
+  frac <- (svb$d[1]^2) / sum(svb$d^2)                  # % variància entre-batch capturada
+
+  list(q1 = scale(q1, center = TRUE, scale = FALSE),   # centrar per seguretat
+       frac = frac,
+       Xc = Xc, X_between = X_between)
+}
+
+# ---------------------------
+# Aplicar projector rank-1 en espai de mostres: P = I - q q^T
+# ---------------------------
+apply_rank1_projector <- function(X, q1) {
+  n <- nrow(X)
+  P <- diag(n) - q1 %*% t(q1)
+  P %*% X
+}
+
+# ---------------------------
+# Iteratiu: treu q1, recalcula, repeteix fins criteris d'aturada
+# ---------------------------
+iterative_rank1_correction <- function(X, batch_fac,
+                                       max_iter = 4,
+                                       target_mean_r2 = 0.05,
+                                       min_rel_drop = 0.01,
+                                       make_plots = TRUE) {
+  # Estat inicial
+  X_curr <- as.matrix(X)
+  col_means0 <- colMeans(X_curr, na.rm = TRUE)
+
+  # Mètrica baseline (R^2 mitjà vs batch)
+  m0 <- mean_r2_vs_batch(X_curr, batch_fac)
+  hist <- tibble(iter = 0L,
+                 mean_R2 = m0,
+                 between_frac = NA_real_,     # % de variància entre-batch que captura q_i
+                 cum_removed_between = 0)     # acumulat (aprox.)
+
+  # Emmagatzema PCA "abans"
+  pca_plots <- list()
+  pca0 <- prcomp(scale(X_curr))
+  pca_df0 <- data.frame(PC1 = pca0$x[,1], PC2 = pca0$x[,2],
+                        Batch = batch_fac, Elapsed_Time = df$elapsed_time)
+  p_before <- plot_pca(pca_df0, "Batch", "Iter 0 (before)", scale_color_discrete())
+  pca_plots[[1]] <- p_before
+
+  cum_between <- 0
+  for (it in seq_len(max_iter)) {
+    # Troba q1 sobre l'estat actual
+    qi <- find_q1_from_Xbetween(X_curr, batch_fac)
+    q1 <- qi$q1; frac <- qi$frac
+
+    # Si no queda component entre-batch, parem
+    if (is.null(q1)) {
+      message(sprintf("Iter %d: no remaining between-batch component (rank ~ 0).", it))
+      break
+    }
+
+    # Projecta fora q1 (rank-1)
+    Xc  <- scale(X_curr, center = TRUE, scale = FALSE)
+    Xc1 <- apply_rank1_projector(Xc, q1)
+    X_next <- sweep(Xc1, 2, colMeans(X_curr, na.rm = TRUE), `+`)  # manté nivells de l'iter
+
+    # Nova mètrica
+    m_it <- mean_r2_vs_batch(X_next, batch_fac)
+
+    # Actualitza històric
+    cum_between <- cum_between + frac
+    hist <- bind_rows(hist,
+      tibble(iter = it, mean_R2 = m_it,
+             between_frac = frac, cum_removed_between = cum_between))
+
+    # PCA després d'aquesta passada
+    pca_it <- prcomp(scale(X_next))
+    pca_df_it <- data.frame(PC1 = pca_it$x[,1], PC2 = pca_it$x[,2],
+                            Batch = batch_fac, Elapsed_Time = df$elapsed_time)
+    p_it <- plot_pca(pca_df_it, "Batch",
+                     sprintf("Iter %d (after q%d)", it, it),
+                     scale_color_discrete())
+    pca_plots[[length(pca_plots) + 1]] <- p_it
+
+    # Criteris d'aturada
+    rel_drop <- (hist$mean_R2[it] - hist$mean_R2[it + 1]) / hist$mean_R2[it]
+    if (!is.finite(rel_drop)) rel_drop <- 0
+    if (m_it <= target_mean_r2 || rel_drop < min_rel_drop) {
+      message("Stop: target reached or marginal improvement.")
+      X_curr <- X_next
+      break
+    }
+
+    # Següent iteració
+    X_curr <- X_next
+  }
+
+  # Retornem resultats
+  list(X_corrected = X_curr,
+       history = hist,
+       pca_plots = pca_plots)
+}
+
+# ---------------------------
+# Executa el procés
+# ---------------------------
+res_iter <- iterative_rank1_correction(
+  X0, batch_fac,
+  max_iter = 8,             # pots pujar/baixar
+  target_mean_r2 = 0.005,    # aturar-se quan mean R^2 ≤ 5%
+  min_rel_drop = 0.01       # o quan la millora relativa < 1%
+)
+
+X_iter_corr <- res_iter$X_corrected
+hist_iter   <- res_iter$history
+plots_iter  <- res_iter$pca_plots
+
+```
+
+```{r}
+# Taula
+knitr::kable(hist_iter, digits = 3,
+  caption = "Històric: iteració, mean R^2 vs batch, fracció entre-batch capturada per q_i i acumulada")
+
+# Gràfic: mean R^2 (línia) + fracció entre-batch per iter (barres)
+p_r2 <- ggplot(hist_iter, aes(iter, mean_R2)) +
+  geom_line() + geom_point() +
+  theme_minimal() +
+  labs(title = "Mean per-feature R^2 vs batch per iteració",
+       x = "Iteració", y = "Mean R^2")
+
+p_frac <- ggplot(filter(hist_iter, iter > 0), aes(iter, between_frac)) +
+  geom_col() +
+  theme_minimal() +
+  labs(title = "Fracció de variància 'entre-batch' capturada per q_i",
+       x = "Iteració", y = "Fracció (q_i)")
+
+p_r2 | p_frac
+
+```
+
+
+
+```{r}
+# Compose PCA plots: plots_iter[[1]] = BEFORE; després una per iteració
+wrap_plots(plots_iter, ncol = 2)
+
+```
+
+```{r}
+library(MASS)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(patchwork)
+
+# ---------------------------
+# Helpers
+# ---------------------------
+
+# Total variance = sum of per-feature variances on column-centered data
+total_variance <- function(M) {
+  Mc <- scale(M, center = TRUE, scale = FALSE)
+  # sum of sample variances (var uses denominator n-1)
+  sum(apply(Mc, 2, var, na.rm = TRUE))
+  # Equivalent: sum(Mc^2) / (nrow(M)-1)
+}
+
+# Build q1 from X via X_between (each row replaced by its batch mean)
+find_q1_from_Xbetween <- function(X, batch_fac) {
+  Xc <- scale(X, center = TRUE, scale = FALSE)
+  mu_by_batch <- rowsum(Xc, batch_fac) / as.numeric(table(batch_fac))   # k x p
+  X_between   <- mu_by_batch[as.character(batch_fac), , drop = FALSE]   # n x p
+
+  svb <- svd(X_between)
+  if (length(svb$d) == 0 || svb$d[1] < .Machine$double.eps) {
+    return(list(q1 = NULL, Xc = Xc))
+  }
+  q1 <- svb$u[, 1, drop = FALSE]
+  q1 <- scale(q1, center = TRUE, scale = FALSE)
+  list(q1 = q1, Xc = Xc)
+}
+
+# Apply rank-1 projector: P = I - q q^T (on centered data)
+apply_rank1_projector <- function(Xc, q1) {
+  n <- nrow(Xc)
+  P <- diag(n) - q1 %*% t(q1)
+  P %*% Xc
+}
+
+# ---------------------------
+# Iterative rank-1 removal + total variance tracking
+# ---------------------------
+iterative_rank1_totalvar <- function(X, batch_fac,
+                                     max_iter = 9,
+                                     target_rel_drop = 0.005  # stop if drop < 0.5%
+) {
+  X_curr <- as.matrix(X)
+  n <- nrow(X_curr)
+
+  # Baseline total variance
+  tv0 <- total_variance(X_curr)
+  hist <- tibble(iter = 0L,
+                 total_var = tv0,
+                 removed_var = NA_real_,
+                 removed_pct = NA_real_)
+
+  for (it in 1:max_iter) {
+    # Find q1 on current data
+    qinfo <- find_q1_from_Xbetween(X_curr, batch_fac)
+    if (is.null(qinfo$q1)) {
+      message(sprintf("Iter %d: no between-batch component left (rank ~ 0).", it))
+      break
+    }
+    q1 <- qinfo$q1
+
+    # Center current, project rank-1, compute removed component and its variance
+    Xc   <- scale(X_curr, center = TRUE, scale = FALSE)
+    Xc1  <- apply_rank1_projector(Xc, q1)       # corrected (still centered)
+    Xrem <- Xc - Xc1                             # removed component (QQ^T Xc)
+
+    # Variances
+    tv_before <- total_variance(X_curr)          # equals sum(Xc^2)/(n-1)
+    tv_after  <- sum(Xc1^2) / (n - 1)
+    rv_it     <- sum(Xrem^2) / (n - 1)           # removed variance this iter
+    # Sanity: tv_before ≈ tv_after + rv_it (num. tolerance)
+    # Append record
+    hist <- bind_rows(hist,
+      tibble(iter = it,
+             total_var = tv_after,
+             removed_var = rv_it,
+             removed_pct = rv_it / tv_before))
+
+    # Early stop if marginal improvement
+    rel_drop <- (tv_before - tv_after) / tv_before
+    if (!is.finite(rel_drop)) rel_drop <- 0
+    X_curr <- sweep(Xc1, 2, colMeans(X_curr, na.rm = TRUE), `+`)  # restore levels
+
+    if (rel_drop < target_rel_drop) {
+      message("Stop: total variance drop below threshold.")
+      break
+    }
+  }
+
+  list(X_corrected = X_curr, history = hist)
+}
+
+# ---------------------------
+# Run
+# ---------------------------
+X0 <- as.matrix(corr_time$corrected)
+bF <- as.factor(df$batch)
+res_tv <- iterative_rank1_totalvar(X0, bF, max_iter = 9, target_rel_drop = 0.00005)
+
+X_iter_corr <- res_tv$X_corrected
+hist_tv     <- res_tv$history
+
+# ---------------------------
+# Plots
+# ---------------------------
+
+# (1) Total variance per iteration (line)
+p_tv <- ggplot(hist_tv, aes(iter, total_var)) +
+  geom_line() + geom_point() +
+  theme_minimal() +
+  labs(title = "Total variance (column-centered) by iteration",
+       x = "Iteration", y = "Total variance")
+
+# (2) Removed variance per iteration (bars, as % of previous total)
+hist_bar <- hist_tv |> filter(iter > 0)
+p_rv <- ggplot(hist_bar, aes(iter, removed_pct)) +
+  geom_col() +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
+  theme_minimal() +
+  labs(title = "Variance removed each iteration",
+       x = "Iteration", y = "Removed / previous total (%)")
+
+p_tv | p_rv
+
+```
+
+```{r}
+pca_after_iter <- prcomp(scale(X_iter_corr))
+pca_df_after_iter <- data.frame(
+  PC1 = pca_after_iter$x[,1],
+  PC2 = pca_after_iter$x[,2],
+  Batch = as.factor(df$batch),
+  Elapsed_Time = df$elapsed_time
+)
+plot_pca(pca_df_after_iter, "Batch", "PCA AFTER (final iterative rank-1)", scale_color_discrete())
+
+```
+
