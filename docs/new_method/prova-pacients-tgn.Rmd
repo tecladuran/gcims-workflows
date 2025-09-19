@@ -1,0 +1,244 @@
+---
+title: "Orthogonal Projections in Patients dataset"
+author: "Tecla Duran Fort"
+date: "`r Sys.Date()`"
+output:
+  
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+  html_document:
+    toc: yes
+    toc_depth: 3
+    number_sections: yes
+  github_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(plotly)
+library(FactoMineR)
+library(factoextra)
+library(mixOmics)
+source("/storage/users/tduran/Projects/targetml-gcims-tools/load_targetml_tools.R")
+```
+
+# Load and Prepare Data
+
+```{r load-data}
+data <- read_csv("/storage/users/tduran/Projects/targetml-gcims-tools/data/tgn_results/measurements/urine/results_2025-07-02_13-22/all_results/peak_table_corrected_tgn.csv")
+```
+
+```{r}
+# getting acquisition related variables
+data$datetime <- as.POSIXct(substr(data$SampleID, 1, 13), format = "%y%m%d_%H%M%S")
+head(data[, c("SampleID", "datetime")])
+```
+
+```{r}
+data <- data %>%
+  group_by(day) %>%
+  mutate(
+    elapsed_time = as.numeric(difftime(datetime, min(datetime), units = "secs")) / 3600
+  ) %>%
+  ungroup()
+
+head(data[, c("SampleID", "datetime", "day", "elapsed_time")])
+```
+
+```{r}
+data$sample_index <- 1:nrow(data)
+
+ggplot(data, aes(x = sample_index, y = elapsed_time, color = factor(day))) +
+  geom_point(size = 2) +
+  labs(
+    x = "Sample index (acquisition order)",
+    y = "Elapsed time (hours)",
+    color = "Day",
+    title = "Elapsed time profile across acquisition days"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+# PEAK TABLE
+X <- as.matrix(data %>% dplyr::select(starts_with("Cluster")))
+```
+
+# Exploring Batch Influence
+
+```{r}
+# Batch vector
+batch <- data$day
+nbatch <- length(unique(batch))
+
+# One-hot encoding
+B <- model.matrix(~ 0 + factor(batch))   
+colnames(B) <- paste0("Batch_", sort(unique(batch)))
+
+# Mitjanes per batch
+batch_sizes <- as.vector(t(B) %*% rep(1, nrow(X)))   # nombre de mostres per batch
+batch_sums  <- t(B) %*% X                            # suma de cada batch
+M <- sweep(batch_sums, 1, batch_sizes, "/")          # divideix per batch_sizes
+rownames(M) <- colnames(B)
+colnames(M) <- colnames(X)
+
+# Reconstrucció de la matriu de mitjanes per mostra
+X_batch_means <- B %*% M
+rownames(X_batch_means) <- rownames(X)
+colnames(X_batch_means) <- colnames(X)
+
+# PCA sobre la matriu de mitjanes
+pca_batch <- prcomp(X_batch_means, scale. = TRUE)
+
+# Scores
+scores <- as.data.frame(pca_batch$x)
+scores$Sample <- 1:nrow(scores)
+scores$Batch <- data$day
+
+# Variància explicada
+var_explained <- pca_batch$sdev^2 / sum(pca_batch$sdev^2)
+
+```
+
+```{r}
+
+# Variança total de les dades originals
+var_total <- sum(apply(X, 2, var))
+
+# Variança total de la matriu de mitjanes
+var_means <- sum(apply(X_batch_means, 2, var))
+
+# Percentatge explicat
+perc_explained <- 100 * var_means / var_total
+cat("Percentage of total variance explained by batch means:", 
+    round(perc_explained, 2), "%\n")
+
+```
+
+```{r}
+df_var <- data.frame(
+  PC = paste0("PC", 1:5),
+  Variance = var_explained[1:5] * 100
+)
+
+ggplot(df_var, aes(x = PC, y = Variance)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_text(aes(label = sprintf("%.1f%%", Variance)),
+            vjust = -0.5, size = 4) +
+  labs(title = "Explained Variance (Top 5 PCs)",
+       x = "Principal Components",
+       y = "Variance Explained (%)") +
+  theme_minimal(base_size = 10)
+
+```
+
+```{r}
+ggplot(scores, aes(x = Sample, y = PC1, color = factor(Batch))) +
+  geom_point(size = 2) +
+  geom_line(aes(group = 1), alpha = 0.4) +
+  labs(title = "PC1 Scores across Samples",
+       x = "Sample index",
+       y = "PC1 score",
+       color = "Batch") +
+  theme_minimal(base_size = 10)
+
+```
+
+# Exploring order influence
+
+```{r}
+data <- data %>%
+  arrange(day, elapsed_time) %>%
+  group_by(day) %>%
+  mutate(order_in_batch = row_number()) %>%
+  ungroup()
+
+max_order <- max(data$order_in_batch)
+
+O <- model.matrix(~ 0 + factor(order_in_batch, levels = 1:max_order), data = data)
+colnames(O) <- paste0("Ord_", 1:max_order)
+
+# Seleccionem només els clusters
+X <- as.matrix(data %>% dplyr::select(starts_with("Cluster")))
+
+# Nombre de mostres per cada ordre
+order_sizes <- as.vector(t(O) %*% rep(1, nrow(X)))
+
+# Suma per ordre
+order_sums <- t(O) %*% X
+
+# Mitjana per ordre
+M_order <- sweep(order_sums, 1, order_sizes, "/")
+rownames(M_order) <- colnames(O)
+colnames(M_order) <- colnames(X)
+
+# Reconstrucció (mateix format que X)
+X_order_means <- O %*% M_order
+rownames(X_order_means) <- rownames(X)
+colnames(X_order_means) <- colnames(X)
+
+pca_order <- prcomp(X_order_means, scale. = TRUE)
+
+# Scores i info extra
+scores_order <- as.data.frame(pca_order$x)
+scores_order$Sample <- 1:nrow(scores_order)
+scores_order$Order <- data$order_in_batch
+
+```
+
+```{r}
+# Variança total de les dades originals
+var_total <- sum(apply(X, 2, var))
+
+# Variança total de la matriu de mitjanes per ordre
+var_means_order <- sum(apply(X_order_means, 2, var))
+
+# Percentatge explicat
+perc_explained_order <- 100 * var_means_order / var_total
+cat("Percentage of total variance explained by order means:", 
+    round(perc_explained_order, 2), "%\n")
+```
+
+```{r}
+var_explained_order <- pca_order$sdev^2 / sum(pca_order$sdev^2)
+
+df_var_order <- data.frame(
+  PC = paste0("PC", 1:5),
+  Variance = var_explained_order[1:5] * 100
+)
+
+ggplot(df_var_order, aes(x = PC, y = Variance)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_text(aes(label = sprintf("%.1f%%", Variance)),
+            vjust = -0.5, size = 4) +
+  labs(title = "Explained Variance (Top 5 PCs) - Order Means",
+       x = "Principal Components",
+       y = "Variance Explained (%)") +
+  theme_minimal(base_size = 10)
+
+```
+
+```{r}
+ggplot(scores_order, aes(x = Sample, y = PC1, color = factor(data$day))) +
+  geom_point(size = 2, alpha = 0.8) +
+  geom_line(aes(group = data$batch), alpha = 0.4) +
+  labs(title = "PC1 Scores across Order in Batch",
+       x = "Order within batch",
+       y = "PC1 score",
+       color = "Batch") +
+  theme_minimal(base_size = 10)
+
+```
+
+# Conclusions
+
+-   Batch effects explain only a small fraction (7%) of the total variance.
+-   Order within batch has a stronger effect (30%), but the variance is spread across several PCs.

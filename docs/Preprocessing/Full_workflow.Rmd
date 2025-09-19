@@ -176,6 +176,63 @@ peak_list <- peak_list %>% filter(cluster %in% selected_clusters)
 peak_table <- peakTable(peak_list, aggregate_conflicting_peaks = max)
 ```
 
+
+**VISUALIZATION OF THE FINAL ROIS**
+
+```{r, echo=FALSE}
+# Seleccionem la mostra a visualitzar
+sample_plot <- plot_sample(urine$getSample(1), colormap)
+
+# Extreiem límits dels clusters
+cluster_limits <- peak_clustering$cluster_stats%>% filter(cluster %in% selected_clusters) %>%
+  dplyr::select(cluster, dt_min_ms, dt_max_ms, rt_min_s, rt_max_s)
+
+# Calculem punts centrals per les etiquetes
+cluster_limits <- cluster_limits %>%
+  dplyr::mutate(
+    rt_center = (rt_min_s + rt_max_s) / 2,
+    dt_center = (dt_min_ms + dt_max_ms) / 2
+  )
+
+cluster_limits_num <- cluster_limits %>%
+  mutate(cluster_id = gsub("Cluster", "", cluster))  # treu la paraula i deixa el número
+
+
+# Fem la figura
+roi_plot <- sample_plot +
+  ggplot2::geom_rect(
+    data = cluster_limits,
+    aes(xmin = dt_min_ms, xmax = dt_max_ms, ymin = rt_min_s, ymax = rt_max_s),
+    fill = NA, color = "white", linewidth = 0.7
+  ) +
+  ggplot2::geom_text(
+    data = cluster_limits_num,
+    aes(y = rt_center+40, x = dt_center, label = cluster_id),
+    color = "white", size = 2.5
+  )+
+  coord_cartesian(xlim = c(6.5, max(dtime(urine))), ylim= c(100,1050))
+
+# Mostrem a l'RStudio
+print(roi_plot)
+
+# Guardem amb alta qualitat
+ggplot2::ggsave(
+  filename = "sample_urine_pool_rois.png",
+  plot = roi_plot,
+  width = 8, height = 4.3, dpi = 300
+)
+```
+```{r}
+p<- ggplot2::geom_rect(
+    data = cluster_limits,
+    aes(xmin = rt_min_s, xmax = rt_max_s, ymin = dt_min_ms, ymax = dt_max_ms),
+    fill = NA, color = "white", linewidth = 0.3
+  )
+
+print(p)
+```
+
+
 ## 2.5. Impute Peak Table
 
 In order to obtain a complete peak table with values for all clusters across all samples, we apply the function `imputePeakTable()`. This step fills in missing peak intensities by directly integrating the signal within the fixed Region of Interest (ROI) defined for each cluster, even in samples where no peak was originally detected.

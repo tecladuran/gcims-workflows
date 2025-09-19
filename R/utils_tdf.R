@@ -30,11 +30,18 @@ plot_pca <- function(data, color_var, title, color_scale) {
   ggplot(data, aes_string(x = "PC1", y = "PC2", color = color_var)) +
     geom_point(size = 2) +
     color_scale +
-    theme_minimal() +
-    labs(title = title, x = axis_labels[1], y = axis_labels[2])+
+    theme_minimal(base_size = 16)+
+    labs(
+      title = title,
+      x = axis_labels[1],
+      y = axis_labels[2],
+      color = gsub("_", " ", color_var)   # Elimina els underscores
+    ) +
     theme(
-      plot.title = element_text(size = 12, hjust = 0.5))
+      plot.title = element_text(size = 20, hjust = 0.5)
+    )
 }
+
 plot_pca_2 <- function(data1, data2, color_var, title1, title2, color_scale) {
 
   xlim <- range(data1$PC1, data2$PC1)

@@ -2,7 +2,27 @@ Removing External Variability from GC-IMS Data: Linear Orthogonalization
 Approach
 ================
 Tecla Duran Fort
-2025-06-18
+2025-09-19
+
+- <a href="#1-introduction" id="toc-1-introduction">1. Introduction</a>
+- <a href="#2-theoretical-background" id="toc-2-theoretical-background">2.
+  Theoretical Background</a>
+- <a href="#3-implementation" id="toc-3-implementation">3.
+  Implementation</a>
+- <a href="#4-application-to-peak-table"
+  id="toc-4-application-to-peak-table">4. Application to Peak Table</a>
+- <a href="#5-method-visualization" id="toc-5-method-visualization">5.
+  Method Visualization</a>
+  - <a href="#51-sequential-correction"
+    id="toc-51-sequential-correction">5.1. Sequential Correction</a>
+  - <a href="#52-joint-correction" id="toc-52-joint-correction">5.2. Joint
+    Correction</a>
+- <a href="#6-results" id="toc-6-results">6. Results</a>
+  - <a href="#61-variance-explained" id="toc-61-variance-explained">6.1
+    Variance Explained</a>
+  - <a href="#62-principal-component-analysis-pca-visualizations"
+    id="toc-62-principal-component-analysis-pca-visualizations">6.2
+    Principal Component Analysis (PCA) Visualizations</a>
 
 Load Peak Table
 
@@ -12,10 +32,9 @@ df <- read.csv("../../data/peak_table_var.csv")
 
 ## 1. Introduction
 
-This document presents the implementation of a correction procedure
-based on External Parameter Orthogonalization (EPO) for GC-IMS Peak
-Table data. The aim is to remove systematic variability associated with
-external factors such as elapsed time and batch effects, which may
+This document presents the implementation of a correction for GC-IMS
+Peak Table data. The aim is to remove systematic variability associated
+with external factors such as elapsed time and batch effects, which may
 obscure relevant chemical information.
 
 The dataset under study originates from a single urine pool and is used
@@ -130,6 +149,43 @@ It corresponds to a **linear orthogonalization** of the data against the
 external variable $v$, targeting the most dominant and evident source of
 drift in the dataset.
 
+For more than one external variable, let
+
+$$
+V \in \mathbb{R}^{n \times k}
+$$
+
+be the matrix containing the $k$ centered external variables as its
+columns (e.g., elapsed time and batch). The projection matrix onto the
+subspace spanned by these variables is given by
+
+$$
+P = V \,(V^{T} V)^{-1} V^{T}.
+$$
+
+Applying this projection to the centered data $\tilde{X}$ yields the
+component aligned with the external variables:
+
+$$
+\tilde{X}_{\text{proj}} = P \tilde{X}.
+$$
+
+The corrected data, orthogonal to all the external variables
+simultaneously, is obtained as
+
+$$
+\tilde{X}_{\text{corr}} = (I - P)\tilde{X}.
+$$
+
+Finally, the mean is added back to preserve the original scale:
+
+$$
+X_{\text{corr}} = \tilde{X}_{\text{corr}} + \bar{X}.
+$$
+
+This joint formulation directly removes all components of the data
+aligned with the subspace defined by the external variables.
+
 #### Methodological Considerations
 
 Removing variation aligned with external variables risks discarding
@@ -142,83 +198,125 @@ information. Proper **randomization** is essential to avoid this.
 ## 3. Implementation
 
 The following function implements a linear orthogonalization procedure
-that removes the component of the signal aligned with a known external
-variable (e.g., elapsed time or batch index). This is achieved by
-computing the projection of each variable onto the centered external
-variable and subtracting it from the data.
+that removes the component of the signal aligned with one or more known
+external variables (e.g., elapsed time, batch index). This is achieved
+by computing the projection of each feature onto the subspace spanned by
+the centered external variables and subtracting it from the data.
 
 The function returns both the corrected data and the removed projection
 component.
 
 ``` r
-orthogonal_correction <- function(data, variable){
+orthogonal_correction <- function(data, variables){
+  # Convert to numeric matrices
+  data <- as.matrix(data)
+  variables <- as.matrix(variables)
+  
+  # Center data
   data_mean <- colMeans(data)
-  variable_mean <- mean(variable)
   data_centered <- sweep(data, 2, data_mean, "-")
-  variable_centered <- variable - variable_mean
-  scores <- as.numeric(t(data_centered) %*% variable_centered / sum(variable_centered^2))
-  projection <- outer(variable_centered, scores)
+  
+  # Center external variables
+  V_centered <- scale(variables, center = TRUE, scale = FALSE)
+  
+  # Compute projection matrix P
+  XtX <- crossprod(V_centered)              # k x k
+  XtX_inv <- solve(XtX)                     # k x k
+  P <- V_centered %*% XtX_inv %*% t(V_centered)  # n x n
+  
+  # Projected component (aligned with external variables)
+  projection <- P %*% data_centered         # n x p
+  
+  # Corrected data (orthogonal part)
   corrected_data <- data_centered - projection
   corrected_data <- sweep(corrected_data, 2, data_mean, "+")
+  
   return(list(corrected = corrected_data, projection = projection))
 }
 ```
 
 ## 4. Application to Peak Table
 
-The orthogonalization function is applied sequentially to the GC-IMS
-peak intensity matrix. First, the effect of elapsed time is removed,
-followed by batch correction on the already time-corrected data. This
-stepwise approach ensures that each known source of external variability
-is accounted for.
-
-The code below applies the corrections and stores the intermediate
-projections for further visualization and analysis.
+The orthogonalization function is applied to the GC-IMS peak intensity
+matrix using both elapsed time and batch variables simultaneously. This
+removes the components aligned with the subspace spanned by these
+external variables in a single step.
 
 ``` r
 intensities <- df %>% dplyr::select(starts_with("Cluster"))
 
-# Correction for elapsed time
-corr_time <- orthogonal_correction(intensities, df$elapsed_time)
-intensities_time_corr <- corr_time$corrected
+# Correction for both elapsed time and batch
+corrected_intensities <- orthogonal_correction(
+  intensities, 
+  df %>% dplyr::select(elapsed_time, batch)
+)
 
-# Correction for batch
-corr_batch <- orthogonal_correction(intensities_time_corr, df$batch)
-intensities_final <- corr_batch$corrected
-
-# Components for visualization
-time_projection <- corr_time$projection
-batch_projection <- corr_batch$projection
+# Extract corrected data and projection
+intensities_final <- corrected_intensities$corrected
+projection_both <- corrected_intensities$projection
 ```
 
 ## 5. Method Visualization
 
-In this section, we illustrate the step-by-step behavior of the
-orthogonalization procedure on a single example signal (one cluster).
-The goal is to understand how the correction operates on the raw data,
-isolating and removing the components associated with elapsed time and
-batch effects.
+Although the correction is formally implemented using both elapsed time
+and batch simultaneously, it is instructive to visualize the procedure
+step by step. We first show the sequential removal of elapsed time
+followed by batch, and then the reverse order. These results confirm
+that in this dataset the order of application does not affect the final
+corrected signal, since both variables span an orthogonal subspace.
+Finally, we show the equivalent correction performed in a single step,
+where both effects are removed simultaneously.
 
-Each stage of the process is visualized separately: the original signal,
-the estimated component for each external variable, and the resulting
-corrected signals.
+### 5.1. Sequential Correction
 
-To assess the stability of the correction with respect to the order of
-application, we also visualize the results of applying the same
-procedure in reverse (first batch, then elapsed time).
+#### Elapsed Time Followed by Batch
+
+.
+
+``` r
+# Correction for elapsed time 
+corr_time_o1 <- orthogonal_correction(intensities, df$elapsed_time)
+intensities_time_corr_o1 <- corr_time_o1$corrected
+
+# Correction for batch 
+corr_batch_o1 <- orthogonal_correction(intensities_time_corr_o1, df$batch)
+intensities_final_o1 <- corr_batch_o1$corrected
+
+# Components for visualization
+time_projection_o1 <- corr_time_o1$projection
+batch_projection_o1 <- corr_batch_o1$projection
+```
 
 ![](orthogonal_correction_files/figure-latex/correction-visualization-1.png)<!-- -->![](orthogonal_correction_files/figure-latex/correction-visualization-2.png)<!-- -->![](orthogonal_correction_files/figure-latex/correction-visualization-3.png)<!-- -->![](orthogonal_correction_files/figure-latex/correction-visualization-4.png)<!-- -->![](orthogonal_correction_files/figure-latex/correction-visualization-5.png)<!-- -->
+
+#### Reverse Order
 
 After visualizing the sequential correction (elapsed time followed by
 batch), we now apply the same procedure in reverse order. This serves to
 confirm whether the correction is stable and order-independent for this
 dataset.
 
+``` r
+# Apply corrections in reverse order
+corr_batch_o2 <- orthogonal_correction(intensities, df$batch)
+intensities_batch_corr_o2 <- corr_batch_o2$corrected
+
+corr_time_o2 <- orthogonal_correction(intensities_batch_corr_o2, df$elapsed_time)
+intensities_final_o2 <- corr_time_o2$corrected
+
+batch_projection_o2 <- corr_batch_o2$projection
+time_projection_o2 <- corr_time_o2$projection
+```
+
 ![](orthogonal_correction_files/figure-latex/inverse-1.png)<!-- -->![](orthogonal_correction_files/figure-latex/inverse-2.png)<!-- -->![](orthogonal_correction_files/figure-latex/inverse-3.png)<!-- -->![](orthogonal_correction_files/figure-latex/inverse-4.png)<!-- -->![](orthogonal_correction_files/figure-latex/inverse-5.png)<!-- -->
 
 The plots below demonstrate that the final corrected signal remains
 consistent, regardless of the order in which external effects are
 removed.
+
+### 5.2. Joint Correction
+
+![](orthogonal_correction_files/figure-latex/joint-1.png)<!-- -->![](orthogonal_correction_files/figure-latex/joint-2.png)<!-- -->![](orthogonal_correction_files/figure-latex/joint-3.png)<!-- -->
 
 ## 6. Results
 
@@ -231,24 +329,27 @@ explained_variance <- function(data, variable){
   apply(data, 2, function(x){ summary(lm(x ~ variable))$r.squared }) %>% mean()
 }
 
+# Variance explained before correction
 elapsed_original <- explained_variance(intensities, df$elapsed_time)
-elapsed_corrected <- explained_variance(intensities_final, df$elapsed_time)
 batch_original <- explained_variance(intensities, df$batch)
+
+# Variance explained after correction (with both variables at once)
+elapsed_corrected <- explained_variance(intensities_final, df$elapsed_time)
 batch_corrected <- explained_variance(intensities_final, df$batch)
 
+# Build summary dataframe
 variance_df <- data.frame(
-  Condition = c("Original", "Corrected"),
+  Condition = c("Original", "Corrected (Elapsed + Batch)"),
   Elapsed_Time = paste0(round(c(elapsed_original, elapsed_corrected) * 100, 2), " %"),
   Batch = paste0(round(c(batch_original, batch_corrected) * 100, 2), " %")
 )
 
-
 print(variance_df)
 ```
 
-    ##   Condition Elapsed_Time   Batch
-    ## 1  Original      29.73 % 34.82 %
-    ## 2 Corrected       0.04 %     0 %
+    ##                     Condition Elapsed_Time   Batch
+    ## 1                    Original      29.73 % 34.82 %
+    ## 2 Corrected (Elapsed + Batch)          0 %     0 %
 
 The reduction in explained variance after correction confirms the
 effective removal of systematic variability due to elapsed time and
@@ -261,9 +362,6 @@ orthogonalization steps, we perform a Principal Component Analysis (PCA)
 on the cluster intensity matrix. The PCA is first computed on the
 original, uncorrected data, and the resulting components are used as a
 reference space for later projections.
-
-We begin by displaying the projection of the original data on the first
-two principal components, colored by elapsed time.
 
 <div class="figure" style="text-align: center">
 
@@ -283,10 +381,10 @@ Variance explained by each principal component (original data)
 
 </div>
 
-The following plots show how the data distribution changes after
-correcting for elapsed time. The PCA components are the same as in the
-original (uncorrected) analysis, and the corrected data is projected
-into this fixed PCA space for comparison.
+#### Elapsed Time Correction
+
+The first step is to correct for elapsed time. Both the original and the
+time-corrected datasets are projected into the same PCA space.
 
 <div class="figure" style="text-align: center">
 
@@ -298,9 +396,9 @@ colored by elapsed time
 
 </div>
 
-The following plots show the impact of correcting for batch effects
-while leaving elapsed time uncorrected. As before, both datasets are
-projected into the same PCA space and colored by batch number.
+#### Batch Correction
+
+We now correct for batch effects only, leaving elapsed time uncorrected.
 
 <div class="figure" style="text-align: center">
 
@@ -311,6 +409,8 @@ colored by batch
 </p>
 
 </div>
+
+#### Full Correction
 
 We now compare the full correction (elapsed time + batch) against the
 original data. Both datasets are projected into the same PCA space.
@@ -323,6 +423,8 @@ Projection before (left) and after (right) full correction (no coloring)
 </p>
 
 </div>
+
+#### PCA After Correction
 
 Finally, we perform a new PCA using the fully corrected dataset. The
 plots below show the distribution of samples in the new PCA space,

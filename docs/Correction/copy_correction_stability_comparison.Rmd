@@ -72,37 +72,6 @@ ggplot(rsd_melt, aes(x = RSD, fill = Condition)) +
   theme_minimal(base_size = 13) +
   theme(plot.title = element_text(hjust = 0.5, size = 12))
 ```
-```{r}
-library(scales)
-p <- ggplot(rsd_melt, aes(x = RSD, fill = Condition)) +
-  geom_histogram(position = "identity", binwidth = 5, alpha = 0.6) +
-  scale_fill_manual(values = c("#1D3557", "#A8DADC")) +
-  geom_vline(xintercept = 20, color = "darkred", size = 1.5, linetype = "dashed") +
-  labs(title = "RSD Distribution Before and After Correction",
-       x = "Relative Standard Deviation (%)",
-       y = "Number of Clusters") +
-  scale_y_continuous(breaks = pretty_breaks(n = 10), labels = function(x) floor(x)) +
-  theme_classic(base_size = 18) +
-  theme(
-    plot.title   = element_text(hjust = 0.5, size = 20),
-    axis.title   = element_text(size = 18),
-    axis.text    = element_text(size = 16),
-    legend.title = element_text(size = 16),
-    legend.text  = element_text(size = 14),
-    legend.position = c(0.95, 0.95),   # superposada dalt a la dreta
-    legend.justification = c("right", "top"),
-    legend.background = element_blank(),  # sense recuadre
-    legend.box.background = element_blank()
-  )
-
-# Mostra la figura
-print(p)
-
-# Desa en PNG "xafat"
-ggsave("rsd-comparison-1.png", plot = p, width = 9, height = 6, dpi = 300, bg = "white")
-
-
-```
 
 ---
 
@@ -182,15 +151,7 @@ p1 <- plot_pca(pca_df_raw, "Elapsed_Time", "Colored by Elapsed Time",
 p2 <- plot_pca(pca_df_raw, "Batch", "Colored by Batch",
                scale_color_discrete())
 
-combined_plot <- p1 + p2
-
-combined_plot
-
-ggsave(
-  "pca_raw.png",
-  combined_plot,
-  width = 13, height = 5, dpi = 300
-)
+p1 + p2
 ```
 
 ```{r pca-variance-raw, echo=FALSE, fig.width=5, fig.height=3, fig.align='center', fig.cap = "Explained variance by the first six PCA components (raw data)"}
@@ -202,7 +163,7 @@ var_df_raw <- data.frame(
 ggplot(var_df_raw, aes(x = PC, y = Variance)) +
   geom_col(fill = "#A8DADC") +
   theme_minimal(base_size = 13) +
-  labs(title = "PCA of Raw Data — Variance Explained",,
+  labs(title = "Explained Variance — Raw PCA",
        x = "Principal Component", y = "Explained Variance (%)") +
   theme(axis.text.x = element_text(size = 11))
 ```
@@ -233,15 +194,7 @@ p1 <- plot_pca(pca_df_corr, "Elapsed_Time", "Colored by Elapsed Time",
 p2 <- plot_pca(pca_df_corr, "Batch", "Colored by Batch",
                scale_color_discrete())
 
-combined_plot <- p1 + p2
-
-combined_plot
-
-ggsave(
-  "pca_corrected.png",
-  combined_plot,
-  width = 13, height = 5, dpi = 300
-)
+p1 + p2
 ```
 
 ```{r pca-corrected-variance, echo=FALSE, fig.width=5, fig.height=3, fig.cap = "Variance explained by the first six PCA components (corrected data)", fig.align='center'}
@@ -252,53 +205,12 @@ var_df_corr <- data.frame(PC = paste0("PC", 1:6),
 ggplot(var_df_corr, aes(x = PC, y = Variance)) +
   geom_col(fill = "#A8DADC") +
   theme_minimal(base_size = 13) +
-  labs(title = "PCA of Corrected Data — Variance Explained",
+  labs(title = "Corrected PCA — Variance Explained",
        x = "Principal Component", y = "Explained Variance (%)") +
   theme(axis.text.x = element_text(size = 11))
 ```
 
 Compared to the PCA of the raw data, the corrected data shows a more homogeneous distribution of variance across components, and no evident separation or gradient is observed when coloring by elapsed time or batch. This suggests that external influences no longer dominate the variance structure after correction.
-
-```{r}
-library(patchwork)
-
-# Data frames
-var_df_corr <- data.frame(PC = paste0("PC", 1:6),
-                          Variance = explained_corr[1:6])
-var_df_raw <- data.frame(PC = paste0("PC", 1:6),
-                         Variance = explained_var_raw[1:6])
-
-# Plots
-p_raw <- ggplot(var_df_raw, aes(x = PC, y = Variance)) +
-  geom_col(fill = "#457B9D") +
-  theme_minimal(base_size = 13) +
-  labs(title = "Raw Data",
-       x = "Principal Component", y = "Explained Variance (%)") +
-  theme(axis.text.x = element_text(size = 11),
-        plot.title = element_text(hjust = 0.5))
-
-p_corr <- ggplot(var_df_corr, aes(x = PC, y = Variance)) +
-  geom_col(fill = "#A8DADC") +
-  theme_minimal(base_size = 13) +
-  labs(title = "Corrected Data",
-       x = "Principal Component", y = NULL) +
-  theme(axis.text.x = element_text(size = 11),
-        axis.title.y = element_blank(),
-        plot.title = element_text(hjust = 0.5))
-
-# Combine with generic title
-final_plot <- (p_raw | p_corr) +
-  plot_annotation(title = "PCA — Variance Explained") &
-  theme(plot.title = element_text(size = 16, hjust = 0.5))
-
-# Show in Rmd
-final_plot
-
-# Save to PNG with high resolution
-ggsave("pca_variance_comparison.png", final_plot,
-       width = 9, height = 5, dpi = 300)
-
-```
 
 ---
 
