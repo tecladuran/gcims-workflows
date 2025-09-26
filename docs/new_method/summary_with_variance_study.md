@@ -88,8 +88,8 @@ O <- model.matrix(~ 0 + factor(order_in_batch, levels = 1:max_order))
 colnames(O) <- paste0("Ord_", 1:max_order)
 ```
 
-![](batch_inf_files/figure-latex/unnamed-chunk-3-1.png)<!-- -->
-![](batch_inf_files/figure-latex/unnamed-chunk-4-1.png)<!-- -->
+![](summary_variance/figure-latex/unnamed-chunk-3-1.png)<!-- -->
+![](summary_variance/figure-latex/unnamed-chunk-4-1.png)<!-- -->
 
 # Batch Effect
 
@@ -108,7 +108,7 @@ rownames(X_batch_means) <- rownames(X)
 colnames(X_batch_means) <- colnames(X)
 ```
 
-![](batch_inf_files/figure-latex/hm-Xbatchmeans-1.png)<!-- -->
+![](summary_variance/figure-latex/hm-Xbatchmeans-1.png)<!-- -->
 
 ## PCA of Batch-Reconstructed Data
 
@@ -145,9 +145,9 @@ loadings <- pca_batch$rotation
 var_pca_batch <- pca_batch$sdev^2 / sum(pca_batch$sdev^2)
 ```
 
-![](batch_inf_files/figure-latex/var-exp-p-1.png)<!-- -->
+![](summary_variance/figure-latex/var-exp-p-1.png)<!-- -->
 
-![](batch_inf_files/figure-latex/pc1-batch-plot-1.png)<!-- -->![](batch_inf_files/figure-latex/pc1-batch-plot-2.png)<!-- -->
+![](summary_variance/figure-latex/pc1-batch-plot-1.png)<!-- -->![](summary_variance/figure-latex/pc1-batch-plot-2.png)<!-- -->
 
 ## Variance Explained
 
@@ -220,7 +220,7 @@ explained_in_X <- sapply(1:8, function(i) {
 })
 ```
 
-![](batch_inf_files/figure-latex/unnamed-chunk-9-1.png)<!-- -->
+![](summary_variance/figure-latex/unnamed-chunk-9-1.png)<!-- -->
 
 # Time/Order Effect
 
@@ -239,7 +239,7 @@ rownames(X_order_means) <- rownames(X)
 colnames(X_order_means) <- colnames(X)
 ```
 
-![](batch_inf_files/figure-latex/unnamed-chunk-10-1.png)<!-- -->
+![](summary_variance/figure-latex/unnamed-chunk-10-1.png)<!-- -->
 
 ## PCA of Order-Reconstructed Data
 
@@ -262,8 +262,8 @@ loadings <- pca_order$rotation
 var_pca_order <- pca_order$sdev^2 / sum(pca_order$sdev^2)
 ```
 
-![](batch_inf_files/figure-latex/var-exp-o-p-1.png)<!-- -->
-![](batch_inf_files/figure-latex/pc1-order-plot-1.png)<!-- -->
+![](summary_variance/figure-latex/var-exp-o-p-1.png)<!-- -->
+![](summary_variance/figure-latex/pc1-order-plot-1.png)<!-- -->
 
 ## Variance Explained
 
@@ -322,4 +322,4 @@ explained_in_X <- sapply(1:14, function(i) {
 })
 ```
 
-![](batch_inf_files/figure-latex/unnamed-chunk-15-1.png)<!-- -->
+![](summary_variance/figure-latex/unnamed-chunk-15-1.png)<!-- -->
