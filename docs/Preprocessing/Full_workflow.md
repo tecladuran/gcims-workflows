@@ -189,7 +189,7 @@ background. The corrected values are obtained by subtracting this
 estimated baseline from the imputed peak table.
 
 Details of the method are described in the [baseline correction
-report](https://github.com/tecladuran/gcims-workflows/blob/main/docs/baseline_correction.pdf).
+report](https://github.com/tecladuran/gcims-workflows/blob/main/docs/Preprocessing/baseline_correction.md).
 
 ``` r
 peak_table_corrected <- correctBaseline(

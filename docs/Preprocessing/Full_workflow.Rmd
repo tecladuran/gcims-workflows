@@ -255,7 +255,7 @@ During peak integration in GC-IMS, the signal is quantified over a fixed Region 
 
 To correct for this effect, we apply a cluster-specific baseline correction based on an expanded ROI window that captures the local background. The corrected values are obtained by subtracting this estimated baseline from the imputed peak table.
 
-Details of the method are described in the [baseline correction report](https://github.com/tecladuran/gcims-workflows/blob/main/docs/baseline_correction.pdf).
+Details of the method are described in the [baseline correction report](https://github.com/tecladuran/gcims-workflows/blob/main/docs/Preprocessing/baseline_correction.md).
 
 ```{r baseline-correction-function}
 peak_table_corrected <- correctBaseline(
