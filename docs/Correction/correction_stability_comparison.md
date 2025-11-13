@@ -1,7 +1,27 @@
 Comparison of Raw and Corrected GC-IMS Data
 ================
 Tecla Duran Fort
-2025-05-24
+2025-11-13
+
+- <a href="#1-introduction" id="toc-1-introduction">1. Introduction</a>
+- <a href="#2-apply-correction" id="toc-2-apply-correction">2. Apply
+  Correction</a>
+- <a href="#3-relative-standard-deviation-rsd"
+  id="toc-3-relative-standard-deviation-rsd">3. Relative Standard
+  Deviation (RSD)</a>
+- <a href="#4-cluster-stability" id="toc-4-cluster-stability">4. Cluster
+  Stability</a>
+- <a href="#5-explained-variance-by-external-factors"
+  id="toc-5-explained-variance-by-external-factors">5. Explained Variance
+  by External Factors</a>
+- <a href="#6-principal-component-analysis-pca"
+  id="toc-6-principal-component-analysis-pca">6. Principal Component
+  Analysis (PCA)</a>
+  - <a href="#61-pca-of-raw-data" id="toc-61-pca-of-raw-data">6.1 PCA of Raw
+    Data</a>
+  - <a href="#62-pca-of-corrected-data"
+    id="toc-62-pca-of-corrected-data">6.2. PCA of Corrected Data</a>
+- <a href="#7-conclusion" id="toc-7-conclusion">7. Conclusion</a>
 
 ## 1. Introduction
 
@@ -22,14 +42,13 @@ unwanted variability after correction.
 
 ``` r
 df <- read.csv("../../data/peak_table_var.csv")
-intensities <- df %>% select(starts_with("Cluster"))
+intensities <- df %>% dplyr::select(starts_with("Cluster"))
 
-# Apply sequential correction
-corr_time <- orthogonal_correction(intensities, df$elapsed_time)
-intensities_time_corr <- corr_time$corrected
-
-corr_batch <- orthogonal_correction(intensities_time_corr, df$batch)
-intensities_final <- corr_batch$corrected
+intensities_final <- orthogonal_correction(
+  intensities, 
+  df %>% dplyr::select(elapsed_time, batch)
+)$corrected
+intensities_final <- as.data.frame(intensities_final)
 ```
 
 ------------------------------------------------------------------------
@@ -124,6 +143,50 @@ homogeneous distribution of variance across components, and no evident
 separation or gradient is observed when coloring by elapsed time or
 batch. This suggests that external influences no longer dominate the
 variance structure after correction.
+
+``` r
+library(patchwork)
+
+# Data frames
+var_df_corr <- data.frame(PC = paste0("PC", 1:6),
+                          Variance = explained_corr[1:6])
+var_df_raw <- data.frame(PC = paste0("PC", 1:6),
+                         Variance = explained_var_raw[1:6])
+
+# Plots
+p_raw <- ggplot(var_df_raw, aes(x = PC, y = Variance)) +
+  geom_col(fill = "#457B9D") +
+  theme_minimal(base_size = 13) +
+  labs(title = "Raw Data",
+       x = "Principal Component", y = "Explained Variance (%)") +
+  theme(axis.text.x = element_text(size = 11),
+        plot.title = element_text(hjust = 0.5))
+
+p_corr <- ggplot(var_df_corr, aes(x = PC, y = Variance)) +
+  geom_col(fill = "#A8DADC") +
+  theme_minimal(base_size = 13) +
+  labs(title = "Corrected Data",
+       x = "Principal Component", y = NULL) +
+  theme(axis.text.x = element_text(size = 11),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+
+# Combine with generic title
+final_plot <- (p_raw | p_corr) +
+  plot_annotation(title = "PCA — Variance Explained") &
+  theme(plot.title = element_text(size = 16, hjust = 0.5))
+
+# Show in Rmd
+final_plot
+```
+
+![](Comparison_corrected_files/figure-latex/unnamed-chunk-1-1.png)<!-- -->
+
+``` r
+# Save to PNG with high resolution
+ggsave("pca_variance_comparison.png", final_plot,
+       width = 9, height = 5, dpi = 300)
+```
 
 ------------------------------------------------------------------------
 

@@ -1,0 +1,693 @@
+---
+title: "Evaluating the Impact of Orthogonal Correction on Simulated Group Discrimination"
+author: "Tecla Duran Fort"
+date: "`r Sys.Date()`"
+always_allow_html: true
+output:
+  github_document:
+    
+    toc: true
+  pdf_document:
+    toc: true
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(pROC)
+library(caret)
+library(purrr)
+library(mixOmics)
+library(patchwork)
+library(caret)
+library(pROC)
+library(knitr)
+library(kableExtra)
+library(pls)
+library(plsVarSel)
+library(pROC)
+library(tidyverse)
+source("../../load_gcims_tools.R") 
+```
+
+
+```{r, echo=FALSE}
+# PARALLELISATION 
+
+library(BiocParallel)
+
+# Detecta nombre total de cores disponibles
+n_total <- parallel::detectCores()
+
+# Deixa 4 cores lliures per seguretat
+n_workers <- max(1, n_total - 4)
+
+message("Detected cores: ", n_total)
+message("Using workers:  ", n_workers)
+
+# Linux/macOS → Multicore
+if (.Platform$OS.type == "unix") {
+    param <- MulticoreParam(workers = n_workers)
+} else {
+    # Windows → Snow
+    param <- SnowParam(workers = n_workers, type = "SOCK")
+}
+
+register(param)
+
+```
+
+# 1. Introduction
+
+This document evaluates the impact of an orthogonal projection correction applied in the sample space to GC-IMS peak table data. The analysis is based on a dataset where a controlled perturbation is introduced in a specific signal to simulate a potential biomarker shift.
+
+We begin by applying this perturbation to a selected cluster and splitting the dataset into training and test sets using stratified sampling. A PLS-DA model is then trained on the raw data and evaluated through ROC curves and AUC values. The same procedure is repeated after correcting the data using a two-step orthogonal projection based on elapsed time and batch.
+
+To better understand the model behaviour, we visualize the latent space projections (PLS-DA scores) before and after correction. Finally, this process is extended to multiple clusters and perturbation levels to assess the consistency of the correction effect, and summary statistics are reported across all simulations.
+
+# 2. Load Data and Metadata
+
+The dataset used in this simulation corresponds to a peak table derived from repeated measurements of a pooled urine sample, with external variables `elapsed_time` and `batch` included.
+
+To ensure reproducibility of the initial random group assignment and all subsequent analyses, we explicitly fix the random seed at the beginning of the workflow (`set.seed(1234)`). This allows the entire simulation pipeline to be rerun with identical outputs.
+
+```{r load-data}
+set.seed(1000)
+df <- read.csv("../../data/peak_table_var.csv")
+
+meta <- df[, c("elapsed_time", "batch")]
+
+# Get cluster names
+clusters <- grep("^Cluster", names(df), value = TRUE)
+```
+
+## 2.1. Assign Classes 
+
+In this first step, artificial group labels are randomly assigned to the samples. This creates a balanced division into "Control" and "Cancer" groups, which do not correspond to any real condition but serve to simulate a classification scenario.
+
+This is the **initial random assignment**, used for the first round of simulations and visualizations. In later sections, the group labels will be reassigned multiple times with different random seeds to evaluate the impact of random variation and ensure that results are not dependent on a specific group configuration.
+
+```{r assign-groups}
+# Assign random group labels
+df$Group <- sample(rep(c("Control", "Cancer"), length.out = nrow(df)))
+```
+
+
+## Visualizing Group vs Technical Effects
+
+Before running the simulation, we visualize the alignment between the randomly assigned `Group` labels and the technical variables `elapsed_time` and `batch`. All values are scaled to the same range for direct comparison.
+
+```{r plot-alignment, fig.width=8, fig.height=4, echo=FALSE}
+
+# Create a copy of df
+df_viz <- df %>%
+  dplyr::mutate(
+    Sample = dplyr::row_number(),
+    Group_numeric = ifelse(Group == "Control", 0, 1),
+    elapsed_scaled = scale(elapsed_time)[, 1],
+    batch_scaled = scale(as.numeric(batch))[, 1]
+  )
+
+df_long <- df_viz %>%
+  dplyr::select(Sample, Group_numeric, elapsed_scaled, batch_scaled) %>%
+  tidyr::pivot_longer(cols = -Sample, names_to = "Variable", values_to = "Value")
+
+ggplot2::ggplot(df_long, ggplot2::aes(x = Sample, y = Value, color = Variable)) +
+  ggplot2::geom_line(size = 1) +
+  ggplot2::scale_color_manual(values = c("black", "#1D3557", "#E63946"),
+                              labels = c("Group (0 = Control, 1 = Cancer)",
+                                         "Elapsed Time (scaled)",
+                                         "Batch (scaled)")) +
+  ggplot2::theme_minimal(base_size = 12) +
+  ggplot2::labs(title = "Comparison of Group Assignment and Technical Variables",
+                x = "Sample Index", y = "Scaled Value", color = "Variable") +
+  ggplot2::theme(legend.position = "bottom")
+```
+
+
+# 3. Function Definitions
+
+## 3.1 Simulate Controlled Shift in One Cluster
+
+This function modifies the values of a selected cluster in the "Cancer" group by adding a perturbation proportional to its mean intensity. The goal is to simulate a consistent increase in signal for one variable, mimicking the presence of a potential biomarker.
+
+```{r simulate-shift}
+simulate_shift <- function(df, cluster, perc) {
+  df_mod <- df
+  mean_val <- mean(df[[cluster]], na.rm = TRUE)
+  noise <- rnorm(nrow(df_mod), mean = perc * mean_val, sd = 0.05 * mean_val)
+  df_mod[[cluster]][df_mod$Group == "Cancer"] <- df_mod[[cluster]][df_mod$Group == "Cancer"] + noise[df_mod$Group == "Cancer"]
+  return(as.data.frame(df_mod))
+}
+```
+
+
+## 3.2 Compute AUC from a PLS-DA Model
+
+This section describes the procedure used to evaluate the classification performance of a PLS-DA model using a **nested cross-validation framework** combined with **iterative feature elimination based on VIP scores**. Although the code returns fold-wise predictions, the final AUC is computed afterwards from these predictions.
+
+
+
+**1. Stratified fold generation**
+
+The function `make_folds()` creates *k* stratified folds by:
+
+* identifying sample indices for each class,
+* shuffling them,
+* splitting them into *k* equally sized groups,
+* and merging the groups across classes.
+
+This ensures that every fold preserves the original class balance between *Control* and *Cancer*, preventing bias during training and evaluation.
+
+
+
+**2. Outer cross-validation loop**
+
+The main evaluation is performed through an outer *k*-fold cross-validation:
+
+* In each outer fold, one subset is held out as the **test set**.
+* The remaining samples form the **training set**.
+* Only the predictions obtained on these outer test sets are used for the final performance estimation (e.g., AUC).
+
+This provides an unbiased assessment of the model’s generalisation capability.
+
+
+
+**3. Recursive feature elimination based on VIP**
+
+Within each outer fold, variable selection is performed on the training set through an iterative procedure:
+
+**3.1 Inner cross-validation**
+
+A second level of cross-validation (inner folds) is used to:
+
+* select the optimal number of latent variables (LVs),
+* and evaluate the performance of the current set of features.
+
+For every inner fold:
+
+1. A PLS-DA model is trained with the current feature set.
+2. Predictions are computed for all possible numbers of components up to `ncomp_max`.
+3. Classification accuracy is computed for each number of components.
+
+The best-performing number of components (based on mean inner accuracy) is retained.
+
+**3.2 VIP-based elimination**
+
+A full PLS-DA model is then fitted using all inner-optimal parameters.
+VIP scores are computed, and a small fraction of the least informative variables (5% or at least one) is removed.
+
+This process repeats until:
+
+* no improvement in inner CV accuracy is observed, or
+* only one feature remains.
+
+The best feature subset and the corresponding optimal number of components are stored for the outer fold.
+
+
+**4. Final model training within each outer fold**
+
+Once the optimal feature subset and number of components are identified:
+
+1. A final PLS-DA model is trained on the full training set of that outer fold.
+2. Predictions are generated for the outer test set.
+3. The predicted probabilities, predicted classes, and true labels are stored.
+
+These results constitute the fold-wise outputs used to compute the final AUC.
+
+
+**5. AUC computation**
+
+After all outer folds are processed, the test-set predictions from all folds are concatenated.
+The **Area Under the ROC Curve (AUC)** is then computed using:
+
+* true binary labels, and
+* predicted probabilities for the positive class (*Cancer*).
+
+The AUC summarises the discriminative power of the model:
+
+* **0.5** → random guessing
+* **1.0** → perfect separation
+
+```{r}
+# Stratified Folds
+
+make_folds <- function(y, k) {
+  set.seed(2)
+  folds <- vector("list", k)
+  
+  for (lvl in levels(y)) {
+    idx <- which(y == lvl)
+    idx <- sample(idx)
+    split_idx <- cut(seq_along(idx), breaks = k, labels = FALSE)
+    for (i in 1:k) {
+      folds[[i]] <- c(folds[[i]], idx[split_idx == i])
+    }
+  }
+  return(folds)
+}
+
+```
+
+```{r}
+# Main Function
+
+plsda_rfe <- function(X, y, positive_class, negative_class, 
+                      ncomp_max = 5, outer_folds = 5, inner_folds = 4) {
+  
+  y <- factor(y, levels = c(negative_class, positive_class))
+  y_num <- ifelse(y == positive_class, 1, 0)
+
+  outer_folds_idx <- make_folds(y, outer_folds)
+  results <- list()
+
+  for (o in seq_along(outer_folds_idx)) {
+    #cat("Outer fold:", o, "\n")
+
+    test_id <- outer_folds_idx[[o]]
+    train_id <- setdiff(seq_along(y), test_id)
+
+    X_train <- X[train_id, , drop = FALSE]
+    y_train <- y[train_id]
+    y_train_num <- y_num[train_id]
+    X_test  <- X[test_id, , drop = FALSE]
+    y_test  <- y[test_id]
+    y_test_num <- y_num[test_id]
+
+    features <- colnames(X_train)
+    best_acc <- 0
+    best_features <- features
+
+    internal_acc_history <- data.frame(Nfeatures = integer(), Accuracy = numeric())
+    external_acc_history <- data.frame(Nfeatures = integer(), Accuracy = numeric())
+    fold_predictions <- data.frame()
+
+    repeat {
+      inner_idx <- make_folds(y_train, inner_folds)
+      acc_mat <- matrix(NA, nrow = inner_folds, ncol = min(ncomp_max, length(features)))
+
+      for (f in seq_along(inner_idx)) {
+        val_id <- inner_idx[[f]]
+        tr_id  <- setdiff(seq_along(y_train), val_id)
+
+        Xi_tr <- X_train[tr_id, features, drop = FALSE]
+        yi_tr <- y_train_num[tr_id]
+        Xi_val <- X_train[val_id, features, drop = FALSE]
+        yi_val <- y_train_num[val_id]
+
+        df_tr <- data.frame(y = yi_tr, Xi_tr)
+        model <- plsr(y ~ ., data = df_tr, ncomp = min(ncomp_max, length(features)), 
+                      method = "oscorespls", scale = TRUE)
+
+        preds <- predict(model, newdata = Xi_val, ncomp = 1:min(ncomp_max, length(features)))
+        preds_mat <- matrix(preds, nrow = nrow(Xi_val), ncol = min(ncomp_max, length(features)))
+        preds_class <- ifelse(preds_mat > 0.5, 1, 0)
+
+        acc_mat[f, ] <- colMeans(preds_class == matrix(yi_val, 
+                                                       nrow = length(yi_val), 
+                                                       ncol = min(ncomp_max, length(features))))
+      }
+
+      mean_acc <- colMeans(acc_mat, na.rm = TRUE)
+      opt_ncomp <- which.max(mean_acc)
+
+      internal_acc_history <- rbind(internal_acc_history,
+                                    data.frame(Nfeatures = length(features),
+                                               Accuracy = max(mean_acc)))
+
+      # Model with current features
+      df_tr <- data.frame(y = y_train_num, X_train[, features, drop = FALSE])
+      model_full <- plsr(y ~ ., data = df_tr, ncomp = opt_ncomp, 
+                         method = "oscorespls", scale = TRUE)
+
+      test_pred <- predict(model_full, 
+                           newdata = X_test[, features, drop = FALSE], 
+                           ncomp = opt_ncomp)
+      test_class <- ifelse(test_pred > 0.5, 1, 0)
+      acc_ext <- mean(test_class == y_test_num)
+
+      external_acc_history <- rbind(external_acc_history,
+                                    data.frame(Nfeatures = length(features),
+                                               Accuracy = acc_ext))
+
+      if (max(mean_acc) > best_acc) {
+        best_acc <- max(mean_acc)
+        best_features <- features
+        best_ncomp <- opt_ncomp
+      }
+
+      if (length(features) <= 1) break
+      
+      # VIP
+      vip <- plsVarSel::VIP(model_full, opt.comp = opt_ncomp)
+
+      # number of features to eliminate by iteration
+      n_drop <- ceiling(max(1, length(features) * 0.05))  # 5% or 1
+      
+      vip_order <- sort(vip, decreasing = FALSE)
+      drop_feat <- names(vip_order)[1:n_drop]
+      
+      features <- setdiff(features, drop_feat)
+    }
+
+    # Final Model 
+    
+    # Train
+    df_tr_l <- data.frame(y = y_train_num, X_train[, best_features, drop = FALSE])
+    final_model <- plsr(y ~ ., data = df_tr_l, ncomp = best_ncomp, 
+                        method = "oscorespls", scale = TRUE)
+    
+    # Test
+    test_pred <- predict(final_model, 
+                         newdata = X_test[, best_features, drop = FALSE], 
+                         ncomp = best_ncomp)
+    test_pred <- as.numeric(test_pred)
+    test_class <- ifelse(test_pred > 0.5, 1, 0)
+
+    fold_predictions <- data.frame(
+      SampleIndex = test_id,
+      TrueLabel = y_test_num,
+      PredProb = test_pred,
+      PredClass = test_class,
+      ncomp = best_ncomp
+    )
+
+    results[[o]] <- list(
+      ncomp = best_ncomp,
+      n_features = length(best_features),
+      best_features = best_features,
+      internal_acc_history = internal_acc_history,
+      external_acc_history = external_acc_history,
+      predictions = fold_predictions
+    )
+  }
+
+  return(results)
+}
+
+```
+
+
+## 3.3 Evaluate AUC Before and After Correction
+
+This function compares the classification performance of a PLS-DA model trained on:
+
+1. The original but **modified** dataset, where a controlled shift has been introduced in one cluster to simulate a biomarker-like effect in the "Cancer" group.
+2. The same dataset after applying orthogonal projection in the sample space to remove the influence of technical variables.
+
+The correction method is based on a custom implementation of projection onto the orthogonal complement of the space spanned by external covariates. This projection is performed sequentially for:
+
+- `elapsed_time`, to account for intra-batch variation;
+- `batch`, to account for inter-batch variation.
+
+This correction strategy is described in detail here:  
+[Orthogonal Correction in the Sample Space](https://github.com/tecladuran/gcims-workflows/blob/main/docs/Correction/orthogonal_correction.md)
+
+### Procedure
+- The matrix of cluster intensities (`X_raw`) and group labels (`y`) are extracted from the **synthetically altered** dataset.
+- A PLS-DA model is trained on the uncorrected data using the function `compute_auc_plsda()` (see Section 3.2), and its AUC is calculated.
+- The data is then corrected using orthogonal projections for the two technical covariates.
+- A second PLS-DA model is trained on the corrected data, and its AUC is computed using the same split.
+
+The function returns a named numeric vector with two values:
+- `Raw`: AUC obtained using the modified but uncorrected data;
+- `Corrected`: AUC obtained after correction.
+
+This allows for direct evaluation of how removing technical variation affects the detectability of a synthetic class difference.
+
+
+```{r evaluate-auc}
+evaluate_models <- function(df_mod, meta, seed=NULL) {
+  df_mod <- as.data.frame(df_mod)
+  cluster_cols <- grep("^Cluster", names(df_mod), value = TRUE)
+  X_raw <- as.matrix(df_mod[, cluster_cols])
+  y <- as.factor(df_mod$Group)
+  
+  res_raw <- plsda_rfe(X_raw, y, positive_class = "Cancer", negative_class = "Control")
+  
+  ncomp_raw <- round(mean(do.call(rbind, lapply(res_raw, function(x) x$ncomp))), 0)
+  nfeat_raw <- round(mean(do.call(rbind, lapply(res_raw, function(x) x$n_features))), 0)
+  common_features_raw <- Reduce(intersect, lapply(res_raw, function(x) x$best_features))
+  preds_raw <- do.call(rbind, lapply(res_raw, function(x) x$predictions))
+  roc_raw <- roc(response = preds_raw$TrueLabel,
+                  predictor = preds_raw$PredProb,
+                  levels = c(0,1), direction = "<")
+  auc_raw <- auc(roc_raw)
+  
+
+  # Apply correction sequentially for both elapsed time and batch
+  X_corr <- orthogonal_correction(data=X_raw, variables= meta%>% dplyr::select(elapsed_time, batch))$corrected
+
+  res_corr <- plsda_rfe(X_corr, y, positive_class = "Cancer", negative_class = "Control")
+  
+  ncomp_corr <- round(mean(do.call(rbind, lapply(res_corr, function(x) x$ncomp))), 0)
+  nfeat_corr <- round(mean(do.call(rbind, lapply(res_corr, function(x) x$n_features))), 0)
+  common_features_corr <- Reduce(intersect, lapply(res_corr, function(x) x$best_features))
+  preds_corr <- do.call(rbind, lapply(res_corr, function(x) x$predictions))
+  roc_corr <- roc(response = preds_corr$TrueLabel,
+                  predictor = preds_corr$PredProb,
+                  levels = c(0,1), direction = "<")
+  auc_corr <- auc(roc_corr)
+  
+  return(list(
+    auc = list(RAW = auc_raw, CORRECTED = auc_corr),
+    ncomp = list(RAW = ncomp_raw, CORRECTED = ncomp_corr),
+    n_features = list(RAW = nfeat_raw, CORRECTED = nfeat_corr),
+    common_features = list(RAW = common_features_raw, CORRECTED = common_features_corr)
+  ))
+}
+```
+
+# 5. Run Simulation Across Clusters
+
+In this step, we systematically evaluate how classification performance changes as the simulated "biomarker" effect increases, both before and after correction.
+
+For each cluster and for a range of perturbation levels (from 0 to 1), the following procedure is applied:
+
+1. A synthetic effect is introduced in the "Cancer" group for the selected cluster using `simulate_shift()`. The intensity increase is proportional to the cluster’s mean signal.
+2. The resulting modified dataset is passed to `evaluate_auc()`, which computes the AUC of a PLS-DA classifier before and after correction.
+3. This is repeated for all clusters and perturbation levels, producing a complete matrix of AUC values across different conditions.
+
+To ensure reproducibility, a fixed seed (`seed = 42`) is used during each evaluation.  
+This means that the random partitioning into training and test sets is **identical every time** the same simulation is run. As a result, differences in performance between the raw and corrected data can be attributed **solely to the correction itself**, not to randomness in the group split.  
+
+The results are stored as a long-format dataframe (`auc_df`), with columns:
+- `Cluster`: the cluster where the perturbation was applied
+- `Percent`: the perturbation level (from 0 to 1)
+- `Condition`: "Raw" or "Corrected"
+- `AUC`: the classification performance at that setting
+
+This data is later used for visualizing performance trends across clusters.
+
+```{r run-simulation}
+perturb_levels <- seq(0, 1, length.out = 20)
+results_auc <- list()
+
+
+perturb_levels <- seq(0, 1, length.out = 20)
+
+results_auc <- bplapply(clusters, function(cl) {
+
+  purrr::map_dfr(perturb_levels, function(p) {
+    
+    df_mod <- simulate_shift(df, cl, p)
+    res <- evaluate_models(df_mod, meta)
+
+    tibble::tibble(
+      Cluster = cl,
+      Percent = p,
+      Raw_AUC = as.numeric(res$auc["RAW"]),
+      Corrected_AUC = as.numeric(res$auc["CORRECTED"]),
+      Raw_ncomp = as.numeric(res$ncomp["RAW"]),
+      Corrected_ncomp = as.numeric(res$ncomp["CORRECTED"]),
+      Raw_nfeat = as.numeric(res$n_features["RAW"]),
+      Corrected_nfeat = as.numeric(res$n_features["CORRECTED"]),
+      Raw_features = res$common_features["RAW"],
+      Corrected_features = res$common_features["CORRECTED"]
+    )
+  })
+
+})
+
+
+auc_df <- dplyr::bind_rows(results_auc)
+```
+
+
+```{r aaa}
+auc_long <- auc_df %>%
+  tidyr::pivot_longer(
+    cols = c(Raw_AUC, Corrected_AUC),
+    names_to = "Condition",
+    values_to = "AUC"
+  )
+
+ncomp_long <- auc_df %>%
+  tidyr::pivot_longer(
+    cols = c(Raw_ncomp, Corrected_ncomp),
+    names_to = "Condition",
+    values_to = "ncomp"
+  )
+```
+
+
+## 5.1. Visualisation of AUC by Cluster
+
+This section visualizes how classification performance evolves for each cluster as the simulated perturbation increases. For every cluster, we plot the AUC of the PLS-DA classifier as a function of the perturbation proportion, separately for the raw and corrected datasets.
+
+Each plot shows two lines:
+
+- **Raw** (uncorrected data)
+- **Corrected** (after orthogonal projection)
+
+These curves allow us to see how sensitive each cluster is to the simulated effect, and how much the correction improves detection for each level of perturbation. Clusters where the corrected AUC rises more steeply indicate a stronger benefit from the correction method.
+
+Each plot is titled with the cluster ID (e.g., "Cluster16") and uses a consistent y-axis range from 0.3 to 1.0 for comparability across clusters.
+
+```{r plot-results, fig.width=6, fig.height=4, echo=FALSE}
+unique(auc_df$Cluster) %>% purrr::walk(function(cl) {
+  df_plot <- dplyr::filter(auc_df, Cluster == cl)
+  
+  p <- ggplot(df_plot, aes(x = Percent)) +
+    geom_line(aes(y = Raw_AUC, color = "Raw"), size = 1.2) +
+    geom_line(aes(y = Corrected_AUC, color = "Corrected"), size = 1.2) +
+    scale_color_manual(values = c("Raw" = "#1B9E77", "Corrected" = "#D95F02")) +
+    coord_cartesian(ylim = c(0.3, 1)) +
+    theme_minimal(base_size = 13) +
+    labs(
+      title = paste("PLS-DA AUC vs Perturbation —", cl),
+      x = "Perturbation proportion",
+      y = "AUC",
+      color = "Condition"
+    ) +
+    theme(
+      legend.position = "bottom",
+      plot.title = element_text(hjust = 0.5)
+    )
+  
+  print(p)
+})
+
+```
+
+# 6. Robustness Check
+
+## 6.1. Repeated Random Assignments
+
+To evaluate the stability of the observed AUC improvements, we repeat the group assignment multiple times with different random seeds. This controls for potential biases introduced by a single, lucky alignment between group labels and technical variables.
+
+We compute the AUC with and without orthogonal correction across 200 repetitions for a single cluster (`Cluster48`) perturbation of 20% and visualize the distribution.
+
+```{r repeated-simulations, warning=FALSE, message=FALSE}
+set.seed(NULL)  # No seed fixation
+n_repeats <- 200
+target_cluster <- "Cluster48"
+
+robust_results <- bplapply(1:n_repeats, function(i) { 
+  
+  #  randomitza només les etiquetes 
+  set.seed(1000 + i)  # nova llavor cada iteració
+  df$Group <- sample(rep(c("Control", "Cancer"), length.out = nrow(df)))
+  
+  #  aplica el desplaçament 
+  df_mod <- simulate_shift(df, cluster = target_cluster, perc = 0.20)
+  
+  #  avalua models 
+  res <- evaluate_models(df_mod, meta)
+  
+  tibble::tibble(
+    Iteration = i,
+    Raw = as.numeric(res$auc["RAW"]),
+    Corrected = as.numeric(res$auc["CORRECTED"])
+  )
+}) %>% dplyr::bind_rows()
+
+
+```
+
+```{r}
+ggplot(robust_results, aes(x = Raw, y = Corrected)) +
+  geom_point(color = "#1D3557", alpha = 0.7, size = 2) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  theme_minimal(base_size = 12) +
+  labs(title = paste("Raw vs Corrected AUCs across 200 runs (", target_cluster, ")"),
+       x = "Raw AUC", y = "Corrected AUC")
+
+```
+
+
+
+## 6.2. Global Validation Across Clusters and Perturbation Levels
+
+To confirm that the improvement provided by othogonal correction is consistent across clusters and perturbation levels, we repeat the simulation for all clusters and multiple perturbation levels, with repeated random group assignments.
+
+### Run Simulations
+
+```{r simulate-global, warning=FALSE, message=FALSE}
+perturb_seq <- seq(0, 1, by = 0.05)
+n_repeats <- 10  
+
+results_global <- bplapply(clusters, function(cl) {
+  
+  purrr::map_dfr(perturb_seq, function(p) {
+    
+    purrr::map_dfr(1:n_repeats, function(i) {
+
+      #  randomitza només les etiquetes 
+      set.seed(1000 + i)
+      df$Group <- sample(rep(c("Control", "Cancer"), length.out = nrow(df)))
+
+      #  aplica el desplaçament 
+      df_mod <- simulate_shift(df, cluster = cl, perc = p)
+
+      #  avalua models 
+      res <- evaluate_models(df_mod, meta)
+
+      tibble::tibble(
+        Cluster = cl,
+        Perturbation = p,
+        Rep = i,
+        Raw = as.numeric(res$auc["RAW"]),
+        Corrected = as.numeric(res$auc["CORRECTED"])
+      )
+    })
+  })
+
+}) %>% dplyr::bind_rows()
+
+```
+
+
+
+### Summary Statistics by Perturbation Level
+
+To assess whether the correction provides a statistically significant improvement in classification performance, we perform a **one-sided paired Wilcoxon signed-rank test** at each perturbation level.
+
+Each perturbation level (e.g., 0.05, 0.10, ...) includes results from **multiple clusters**, and for each cluster the simulation is repeated **10 times** using different random group assignments. As a result, every perturbation level includes a large number of paired AUC values comparing the raw and corrected data under the exact same conditions (same cluster, perturbation level, and group assignment).
+
+This non-parametric test compares the AUC values before and after correction for each simulation run, under the null hypothesis that the correction does **not** increase performance. The test is **paired**, meaning that each corrected AUC is compared to its corresponding raw AUC under the exact same conditions (same cluster, perturbation level, and group assignment), thereby controlling for random variation.
+
+The Wilcoxon test is well suited for AUC values, which are bounded and may be non-normally distributed. However, due to the **large number of simulations per condition**, the test has very high statistical power. This means that **p-values are often extremely small**, even when the improvement is modest.
+
+Therefore, **what truly matters in this context is not the p-value itself, but the size and consistency of the improvement**. For this reason, we report:
+- `mean_gain`: the average AUC increase after correction.
+- `prop_improved`: the proportion of simulations in which the corrected AUC is higher than the raw AUC.
+
+Together, these metrics help quantify the practical benefit of the correction across a range of perturbation intensities.
+
+```{r global-stats-summary}
+summary_global <- results_global %>%
+  dplyr::group_by(Perturbation) %>%
+  dplyr::summarise(
+    p_value = wilcox.test(Corrected, Raw, paired = TRUE, alternative = "greater")$p.value,
+    mean_gain = mean(Corrected - Raw),
+    prop_improved = mean(Corrected > Raw)
+  )
+
+summary_global %>%
+  kable(digits = 4, caption = "Summary of Improvement After Correction") %>%
+  kable_styling(full_width = FALSE, position = "center", bootstrap_options = c("striped", "hover"))
+```

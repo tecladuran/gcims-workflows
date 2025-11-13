@@ -3,6 +3,8 @@ title: "Analysis of Variability Sources: Batch and Elapsed Time"
 author: "Tecla Duran Fort"
 date: "`r Sys.Date()`"
 output:
+  github_document:
+    toc: true
   pdf_document:
     toc: true
     fig_caption: true
@@ -159,28 +161,36 @@ r_squared_results$Other <- 1 - (r_squared_results$Elapsed_Time + r_squared_resul
 
 We present the results in a stacked bar chart, where each cluster is represented by a bar. The different sections of each bar correspond to the proportion of variance explained by **elapsed time**, **batch number**, and **other factors**.
 
-```{r barplot-r-squared, echo=FALSE, fig.cap = "Proportion of variance in cluster intensity explained by elapsed time, batch, and other factors", fig.height=4, fig.width=7, fig.pos='H'}
+```{r barplot-r-squared, echo=FALSE, fig.cap = "Proportion of variance in cluster intensity explained by elapsed time, batch, and other factors", fig.height=6, fig.width=10, fig.pos='H'}
 # Reshape the results for plotting
 r_squared_long <- r_squared_results %>%
   gather(key = "Factor", value = "R2", -Cluster) %>%
   mutate(Factor = factor(Factor, levels = c("Elapsed_Time", "Batch", "Other")))
 
-# Create the bar plot
-ggplot(r_squared_long, aes(x = Cluster, y = R2, fill = Factor)) +
+p <- ggplot(r_squared_long, aes(x = Cluster, y = R2, fill = Factor)) +
   geom_bar(stat = "identity", position = "stack") +
-  theme_minimal() +
+  theme_minimal(base_size = 12) +
   labs(
     title = "Explained Variance for Each Cluster",
     x = "Cluster",
-    y = "Proportion of Explained Variance (R²)"
+    y = "Proportion of Explained Variance (R²)",
+    fill = "Factor"
   ) +
-  scale_fill_manual(values = c("#1D3557", "#A8DADC", "#FAEDCD")) +
+  scale_fill_manual(
+    values = c("#1D3557", "#A8DADC", "#F6E0A8"),
+    labels = c("Elapsed Time", "Batch Index", "Other factors")
+  ) +
   theme(
-    plot.title = element_text(size = 12, hjust = 0.5),
-    axis.title = element_text(size = 10),
-    axis.text.x = element_text(angle = 45, hjust = 1))
+    plot.title = element_text(size = 20, hjust = 0.5),
+    axis.title = element_text(size = 17),
+    axis.text.x = element_text(size = 10, angle = 55, hjust = 1),
+    axis.text.y = element_text(size = 15),
+    legend.title = element_text(size = 12),
+    legend.text  = element_text(size = 12)
+  )
+p
+
 ```
-\newpage
 
 ### Overall Contribution of Each Factor
 
@@ -200,18 +210,43 @@ ggtexttable(mean_r2_df, rows = NULL, theme = ttheme("light"))
 ```
 
 ```{r plot-overall, echo=FALSE, fig.cap = "Overall variance explained by elapsed time, batch number, and residual sources", fig.pos='H', fig.height=4, fig.align="center"}
+# Crear un dataframe amb les etiquetes corregides
+plot_data <- data.frame(
+  Factor = names(mean_r2),
+  Value = mean_r2
+) %>%
+  mutate(
+    Factor = recode(Factor,
+      "Elapsed_Time" = "Elapsed Time",
+      "Batch" = "Batch index",
+      "Other" = "Other factors"
+    )
+  )
+
 # Plot
-ggplot(data.frame(Factor = names(mean_r2), Value = mean_r2), aes(x = "", y = Value, fill = Factor)) +
+p <- ggplot(plot_data, aes(x = "", y = Value, fill = Factor)) +
   geom_bar(stat = "identity", width = 1) +
   coord_polar(theta = "y") +
-  labs(title = "Overall Explained Variance") +
-  theme_void() +
-  scale_fill_manual(values = c("#A8DADC", "#1D3557", "#FAEDCD")) +
-  geom_text(aes(label = paste0(round(Value * 100, 1), "%")), 
-            position = position_stack(vjust = 0.5), size = 5, 
-            color = c("white","black", "black"))+
+  labs(
+    title = "Overall Explained Variance",
+    fill = "Factor"
+  ) +
+  theme_void(base_size = 20) +    
+  scale_fill_manual(
+    values = c("#A8DADC", "#1D3557", "#F6E0A8")
+  ) +
+  geom_text(
+    aes(label = paste0(round(Value * 100, 1), "%")),
+    position = position_stack(vjust = 0.5),
+    size = 6,                     
+    color = c("white", "black", "black")
+  ) +
   theme(
-    plot.title = element_text(size = 12, hjust = 0.5))
+    plot.title  = element_text(size = 20, hjust = 0.5), 
+    legend.title = element_text(size = 16),             
+    legend.text  = element_text(size = 14)
+  )
+p
 ```
 
 ## 2.4. Conclusion

@@ -46,7 +46,7 @@
 ---
 
 ### [Group Simulation](Group_Simulation/)
-- **[Simulation PLS-DA Report](Group_Simulation/simulation_plsda.md)**  
+- **[Simulation PLS-DA Report](Group_Simulation/simulation_plsda_rfe_par.md)**  
   Simulates subtle biomarker shifts and compares classification performance before and after correction.  
   *Metric:* AUC (PLS-DA).  
   *Result:* Systematic improvement with correction.

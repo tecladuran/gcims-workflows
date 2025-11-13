@@ -1,0 +1,346 @@
+---
+title: "Single-Fold Evaluation of Orthogonal Correction (Cluster48, Perturbation = 0.25)"
+author: "Tecla Duran Fort"
+date: "`r Sys.Date()`"
+output:
+  github_document:
+    toc: true
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: false
+always_allow_html: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE
+)
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(pROC)
+library(caret)
+library(purrr)
+library(mixOmics)
+library(pls)
+library(plsVarSel)
+library(tidyverse)
+
+source("../../load_gcims_tools.R")   # for orthogonal_correction
+```
+
+# 1. Introduction
+
+This document evaluates the impact of sample–space orthogonal correction on a **single, fixed train/test split** (70/30) for:
+
+* **Cluster48**
+* **Perturbation level: 0.25**
+
+A controlled effect is introduced in Cluster48 for the *Cancer* group.
+A PLS-DA model is then trained using:
+
+* **Recursive Feature Elimination (RFE)** inside the training set
+* **Internal CV** to choose the optimal number of latent variables
+* **External evaluation** on the held-out 30% test set
+
+The procedure is repeated on **corrected data**, using orthogonal projection w.r.t. `elapsed_time` and `batch`.
+
+We finally compare:
+
+1. ROC curves (Raw vs Corrected)
+2. Latent space projections (LV1–LV2)
+3. Classification performance (AUC)
+
+---
+
+# 2. Load Data & Metadata
+
+```{r load-data}
+set.seed(42)
+
+df <- read.csv("../../data/peak_table_var.csv")
+meta <- df[, c("elapsed_time", "batch")]
+
+clusters <- grep("^Cluster", names(df), value = TRUE)
+```
+
+# 3. Assign Random Classes
+
+```{r assign-groups}
+set.seed(1000)
+df$Group <- sample(rep(c("Control", "Cancer"), length.out = nrow(df)))
+```
+
+# 4. Apply Controlled Perturbation (Cluster48, p = 0.25)
+
+```{r simulate-shift}
+simulate_shift <- function(df, cluster, perc) {
+  df_mod <- df
+  m <- mean(df_mod[[cluster]], na.rm = TRUE)
+  noise <- rnorm(nrow(df_mod), mean = perc * m, sd = 0.05 * m)
+
+  idx <- which(df_mod$Group == "Cancer")
+  df_mod[[cluster]][idx] <- df_mod[[cluster]][idx] + noise[idx]
+
+  return(df_mod)
+}
+
+df_mod <- simulate_shift(df, "Cluster48", 0.25)
+```
+
+---
+
+# 5. Stratified 70/30 Split
+
+```{r split}
+set.seed(999)
+
+train_id <- createDataPartition(df_mod$Group, p = 0.7, list = FALSE)
+
+train_df <- df_mod[train_id, ]
+test_df  <- df_mod[-train_id, ]
+
+y_train <- train_df$Group
+y_test  <- test_df$Group
+
+cluster_cols <- grep("^Cluster", names(df_mod), value = TRUE)
+
+X_train_raw <- as.matrix(train_df[, cluster_cols])
+X_test_raw  <- as.matrix(test_df[, cluster_cols])
+```
+
+---
+
+# 6. Internal RFE + Component Optimisation
+
+```{r rfe-functions}
+make_folds <- function(y, k) {
+  set.seed(2)
+  folds <- vector("list", k)
+  
+  for (lvl in levels(y)) {
+    idx <- which(y == lvl)
+    idx <- sample(idx)
+    split_idx <- cut(seq_along(idx), breaks = k, labels = FALSE)
+    for (i in 1:k) {
+      folds[[i]] <- c(folds[[i]], idx[split_idx == i])
+    }
+  }
+  folds
+}
+
+plsda_rfe_cv_tuning <- function(X, y, ncomp_max = 3, inner_folds = 4) {
+
+  y <- factor(y, levels = c("Control", "Cancer"))
+  y_num <- ifelse(y == "Cancer", 1, 0)
+
+  features <- colnames(X)
+  best_acc <- 0
+  
+  repeat {
+    inner_idx <- make_folds(y, inner_folds)
+    acc_mat <- matrix(NA, nrow = inner_folds, ncol = min(ncomp_max, length(features)))
+    
+    for (f in seq_along(inner_idx)) {
+      val_id <- inner_idx[[f]]
+      tr_id  <- setdiff(seq_along(y), val_id)
+
+      Xi_tr <- X[tr_id, features, drop = FALSE]
+      yi_tr <- y_num[tr_id]
+      Xi_val <- X[val_id, features, drop = FALSE]
+      yi_val <- y_num[val_id]
+
+      df_tr <- data.frame(y = yi_tr, Xi_tr)
+      model <- plsr(y ~ ., data = df_tr, ncomp = min(ncomp_max, length(features)),
+                    method = "oscorespls", scale = TRUE)
+
+      preds <- predict(model, newdata = Xi_val,
+                       ncomp = 1:min(ncomp_max, length(features)))
+      preds_mat <- matrix(preds, nrow = nrow(Xi_val))
+      preds_class <- ifelse(preds_mat > 0.5, 1, 0)
+
+      acc_mat[f, ] <- colMeans(preds_class == matrix(yi_val,
+                                                     nrow = length(yi_val),
+                                                     ncol = min(ncomp_max, length(features))))
+    }
+
+    mean_acc <- colMeans(acc_mat, na.rm = TRUE)
+    opt_ncomp <- which.max(mean_acc)
+
+    if (max(mean_acc) > best_acc) {
+      best_acc <- max(mean_acc)
+      best_features <- features
+      best_ncomp <- opt_ncomp
+    }
+
+    if (length(features) <= 1) break
+
+    df_tr <- data.frame(y = y_num, X[, features, drop = FALSE])
+    model_full <- plsr(y ~ ., data = df_tr, ncomp = opt_ncomp,
+                       method = "oscorespls", scale = TRUE)
+    vip <- plsVarSel::VIP(model_full, opt.comp = opt_ncomp)
+
+    n_drop <- max(1, ceiling(length(features) * 0.05))
+    drop_feat <- names(sort(vip, decreasing = FALSE))[1:n_drop]
+    features <- setdiff(features, drop_feat)
+  }
+  list(features = best_features, ncomp = best_ncomp)
+}
+```
+
+---
+
+# 7. Train Final Model (Raw)
+
+```{r train-raw}
+res_raw <- plsda_rfe_cv_tuning(X_train_raw, y_train)
+
+best_features_raw <- res_raw$features
+ncomp_raw <- res_raw$ncomp
+
+df_tr <- data.frame(y = ifelse(y_train == "Cancer", 1, 0),
+                    X_train_raw[, best_features_raw, drop = FALSE])
+
+model_raw <- plsr(y ~ ., data = df_tr, ncomp = ncomp_raw,
+                  method = "oscorespls", scale = TRUE)
+
+raw_pred <- predict(model_raw,
+                    newdata = X_test_raw[, best_features_raw, drop = FALSE],
+                    ncomp = ncomp_raw)
+
+raw_prob <- as.numeric(raw_pred)
+raw_roc <- roc(response = ifelse(y_test == "Cancer", 1, 0),
+               predictor = raw_prob)
+auc_raw <- auc(raw_roc)
+```
+
+---
+
+# 8. Apply Orthogonal Correction
+
+```{r correction}
+X_all_raw <- as.matrix(df_mod[, cluster_cols])
+X_corr <- orthogonal_correction(
+  data = X_all_raw,
+  variables = meta %>% dplyr::select(elapsed_time, batch)
+)$corrected
+
+X_train_corr <- X_corr[train_id, ]
+X_test_corr  <- X_corr[-train_id, ]
+```
+
+---
+
+# 9. Train Final Model (Corrected)
+
+```{r train-corr}
+res_corr <- plsda_rfe_cv_tuning(X_train_corr, y_train)
+
+best_features_corr <- res_corr$features
+ncomp_corr <- res_corr$ncomp
+
+df_tr_corr <- data.frame(y = ifelse(y_train == "Cancer", 1, 0),
+                         X_train_corr[, best_features_corr, drop = FALSE])
+
+model_corr <- plsr(y ~ ., data = df_tr_corr, ncomp = ncomp_corr,
+                   method = "oscorespls", scale = TRUE)
+
+corr_pred <- predict(model_corr,
+                     newdata = X_test_corr[, best_features_corr, drop = FALSE],
+                     ncomp = ncomp_corr)
+
+corr_prob <- as.numeric(corr_pred)
+corr_roc <- roc(response = ifelse(y_test == "Cancer", 1, 0),
+                predictor = corr_prob)
+auc_corr <- auc(corr_roc)
+```
+
+---
+
+# 10. ROC Curve (Raw vs Corrected)
+
+```{r plot-roc, fig.width=7, fig.height=5}
+plot(raw_roc, col = "#E63946", lwd = 3, main = "ROC Curve — Cluster48 (Perturbation = 0.25)")
+plot(corr_roc, col = "#1D3557", lwd = 3, add = TRUE)
+abline(0,1,lty=2)
+
+legend("bottomright",
+       legend = c(paste0("Raw (AUC = ", round(auc_raw, 3), ")"),
+                  paste0("Corrected (AUC = ", round(auc_corr, 3), ")")),
+       col = c("#E63946", "#1D3557"),
+       lwd = 3)
+```
+
+---
+
+# 11. Latent Space (Raw)
+
+```{r latent-raw, fig.width=7, fig.height=5}
+scores_raw <- scores(model_raw)
+
+df_scores_raw <- data.frame(
+  LV1 = scores_raw[,1],
+  LV2 = scores_raw[,2],
+  Group = y_train,
+  Split = "Train"
+)
+
+test_scores_raw <- predict(model_raw,
+                           newdata = X_test_raw[, best_features_raw, drop = FALSE],
+                           ncomp = 1:ncomp_raw, type = "scores")
+
+df_scores_raw_test <- data.frame(
+  LV1 = test_scores_raw[,1],
+  LV2 = test_scores_raw[,2],
+  Group = y_test,
+  Split = "Test"
+)
+
+df_latent_raw <- rbind(df_scores_raw, df_scores_raw_test)
+
+ggplot(df_latent_raw, aes(LV1, LV2, color = Group, shape = Split)) +
+  geom_point(size = 3, alpha = 0.8) +
+  scale_color_manual(values = c("Cancer"="#E63946","Control"="#1D3557")) +
+  theme_minimal(base_size = 13) +
+  labs(title = "PLS-DA Raw — Latent Space (Train & Test)")
+```
+
+---
+
+# 12. Latent Space (Corrected)
+
+```{r latent-corr, fig.width=7, fig.height=5}
+scores_corr <- scores(model_corr)
+
+df_scores_corr <- data.frame(
+  LV1 = scores_corr[,1],
+  LV2 = scores_corr[,2],
+  Group = y_train,
+  Split = "Train"
+)
+
+test_scores_corr <- predict(model_corr,
+                            newdata = X_test_corr[, best_features_corr, drop = FALSE],
+                            ncomp = 1:ncomp_corr,
+                            type = "scores")
+
+df_scores_corr_test <- data.frame(
+  LV1 = test_scores_corr[,1],
+  LV2 = test_scores_corr[,2],
+  Group = y_test,
+  Split = "Test"
+)
+
+df_latent_corr <- rbind(df_scores_corr, df_scores_corr_test)
+
+ggplot(df_latent_corr, aes(LV1, LV2, color = Group, shape = Split)) +
+  geom_point(size = 3, alpha = 0.8) +
+  scale_color_manual(values = c("Cancer"="#E63946","Control"="#1D3557")) +
+  theme_minimal(base_size = 13) +
+  labs(title = "PLS-DA Corrected — Latent Space (Train & Test)")
+```
+

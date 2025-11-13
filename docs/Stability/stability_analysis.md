@@ -1,7 +1,24 @@
 Analysis of GC-IMS Peak Table Stability
 ================
 Tecla Duran Fort
-2025-06-18
+2025-11-13
+
+- <a href="#1-load-peak-table" id="toc-1-load-peak-table">1. Load Peak
+  Table</a>
+  - <a href="#11-visualisation" id="toc-11-visualisation">1.1.
+    Visualisation</a>
+- <a href="#2-stability-of-the-peaks" id="toc-2-stability-of-the-peaks">2.
+  Stability of the Peaks</a>
+  - <a href="#21-relative-standard-deviation-rsd"
+    id="toc-21-relative-standard-deviation-rsd">2.1. Relative Standard
+    Deviation (RSD)</a>
+    - <a href="#211-computing-the-rsd-per-cluster"
+      id="toc-211-computing-the-rsd-per-cluster">2.1.1. Computing the RSD per
+      cluster</a>
+  - <a href="#22-assessment-of-stable-clusters-based-on-rsd"
+    id="toc-22-assessment-of-stable-clusters-based-on-rsd">2.2. Assessment
+    of Stable Clusters Based on RSD</a>
+- <a href="#3-references" id="toc-3-references">3. References</a>
 
 # 1. Load Peak Table
 

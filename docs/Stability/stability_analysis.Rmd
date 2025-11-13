@@ -3,6 +3,8 @@ title: "Analysis of GC-IMS Peak Table Stability"
 author: "Tecla Duran Fort"
 date: "`r Sys.Date()`"
 output:
+  github_document:
+    toc: true
   pdf_document:
     toc: true
     fig_caption: true
@@ -141,20 +143,37 @@ ggtexttable(summary_df, rows = NULL, theme = ttheme("light"))
 
 .
 
-```{r histogram-rsd, echo=FALSE, fig.width=6, fig.height=4, fig.align='center', fig.cap = "Distribution of RSD values across all clusters", fig.pos='H', fig.height=3.2}
-ggplot(rsd_df, aes(x = RSD)) +
-  geom_histogram(binwidth = 5, fill = "#A8DADC", color = "white", alpha = 0.9, boundary = 0) +
-  geom_vline(xintercept = 20, linetype = "dashed", color = "#1D3557", linewidth = 1) +
-  theme_minimal(base_size = 13) +
+```{r histogram-rsd, echo=FALSE, fig.width=10, fig.height=5.5, fig.align='center', fig.cap = "Distribution of RSD values across all clusters", fig.pos='H'}
+p <- ggplot(rsd_df, aes(x = RSD)) +
+  geom_histogram(
+    binwidth = 5,
+    boundary = 0,   
+    fill = "navy",
+    color = "white",
+    alpha = 0.7
+  ) +
+  geom_vline(
+    xintercept = 20,
+    color = "red2",
+    size = 1.5,
+    linetype = "dashed"
+  ) +
+  
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 6)) +
+  
   labs(
     title = "Distribution of RSD Across Clusters",
     x = "Relative Standard Deviation (%)",
     y = "Number of Clusters"
   ) +
+  
+  theme_minimal(base_size = 18) +
   theme(
-    plot.title = element_text(size = 12, hjust = 0.5),
-    axis.title = element_text(size = 10),
-    axis.text = element_text(size = 10))
+    plot.title = element_text(hjust = 0.5, size = 22),
+    panel.grid.major.y = element_line(size = 0.3)
+  )
+
+p
 ```
 
 The histogram shows the distribution of RSD values across all clusters in the corrected peak table. Most clusters exhibit RSD values between 15% and 50%, although some extend beyond this range, with one exceeding 100%. A dashed vertical line marks the 20% threshold, which we use as a reference point based on common practices in metabolomics (as further discussed below).

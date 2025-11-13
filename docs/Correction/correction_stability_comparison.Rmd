@@ -3,6 +3,12 @@ title: "Comparison of Raw and Corrected GC-IMS Data"
 author: "Tecla Duran Fort"
 date: "`r Sys.Date()`"
 output:
+  github_document:
+    toc: true
+  html_document:
+    toc: true
+    toc_float: true
+    fig_caption: true
   pdf_document:
     toc: true
     fig_caption: true
@@ -20,6 +26,7 @@ library(tidyr)
 library(tibble)
 library(reshape2)
 library(ggpubr)
+library(scales) 
 
 # Load GC-IMS tools (including orthogonal_correction() function)
 source("../../load_gcims_tools.R")
@@ -39,14 +46,13 @@ The correction applied is based on the orthogonalization procedure described in 
 
 ```{r apply-correction}
 df <- read.csv("../../data/peak_table_var.csv")
-intensities <- df %>% select(starts_with("Cluster"))
+intensities <- df %>% dplyr::select(starts_with("Cluster"))
 
-# Apply sequential correction
-corr_time <- orthogonal_correction(intensities, df$elapsed_time)
-intensities_time_corr <- corr_time$corrected
-
-corr_batch <- orthogonal_correction(intensities_time_corr, df$batch)
-intensities_final <- corr_batch$corrected
+intensities_final <- orthogonal_correction(
+  intensities, 
+  df %>% dplyr::select(elapsed_time, batch)
+)$corrected
+intensities_final <- as.data.frame(intensities_final)
 ```
 
 ---
@@ -63,44 +69,23 @@ rsd_df <- data.frame(Cluster = names(rsd_raw),
 
 rsd_melt <- rsd_df %>% pivot_longer(-Cluster, names_to = "Condition", values_to = "RSD")
 
-ggplot(rsd_melt, aes(x = RSD, fill = Condition)) +
-  geom_histogram(position = "identity", binwidth = 5, alpha = 0.6) +
-  scale_fill_manual(values = c("#1D3557", "#A8DADC")) +
-  labs(title = "RSD Distribution Before and After Correction",
-       x = "Relative Standard Deviation (%)",
-       y = "Number of Clusters") +
-  theme_minimal(base_size = 13) +
-  theme(plot.title = element_text(hjust = 0.5, size = 12))
-```
-```{r}
-library(scales)
 p <- ggplot(rsd_melt, aes(x = RSD, fill = Condition)) +
   geom_histogram(position = "identity", binwidth = 5, alpha = 0.6) +
-  scale_fill_manual(values = c("#1D3557", "#A8DADC")) +
-  geom_vline(xintercept = 20, color = "darkred", size = 1.5, linetype = "dashed") +
+  geom_vline(xintercept = 20, color = "darkred", size = 1, linetype = "dashed") +
+  scale_fill_manual(values = c("navy", "#E76F51")) +
+  
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 6)) +  # menys breaks = menys línies
+  
   labs(title = "RSD Distribution Before and After Correction",
        x = "Relative Standard Deviation (%)",
        y = "Number of Clusters") +
-  scale_y_continuous(breaks = pretty_breaks(n = 10), labels = function(x) floor(x)) +
-  theme_classic(base_size = 18) +
+  theme_minimal(base_size = 18) +
   theme(
-    plot.title   = element_text(hjust = 0.5, size = 20),
-    axis.title   = element_text(size = 18),
-    axis.text    = element_text(size = 16),
-    legend.title = element_text(size = 16),
-    legend.text  = element_text(size = 14),
-    legend.position = c(0.95, 0.95),   # superposada dalt a la dreta
-    legend.justification = c("right", "top"),
-    legend.background = element_blank(),  # sense recuadre
-    legend.box.background = element_blank()
+    plot.title = element_text(hjust = 0.5, size = 22),
+    panel.grid.major.y = element_line(size = 0.3),  # més net
   )
 
-# Mostra la figura
-print(p)
-
-# Desa en PNG "xafat"
-ggsave("rsd-comparison-1.png", plot = p, width = 9, height = 6, dpi = 300, bg = "white")
-
+p
 
 ```
 

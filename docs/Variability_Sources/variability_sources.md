@@ -1,7 +1,45 @@
 Analysis of Variability Sources: Batch and Elapsed Time
 ================
 Tecla Duran Fort
-2025-06-18
+2025-11-13
+
+- <a href="#1-compute-time-variables" id="toc-1-compute-time-variables">1.
+  Compute Time Variables</a>
+  - <a href="#11-extract-datetime-from-sampleid"
+    id="toc-11-extract-datetime-from-sampleid">1.1. Extract Datetime from
+    SampleID</a>
+  - <a href="#12-compute-batch-and-elapsed-time-variables"
+    id="toc-12-compute-batch-and-elapsed-time-variables">1.2. Compute
+    <em>Batch</em> and <em>Elapsed Time</em> Variables</a>
+- <a href="#2-association-with-elapsed-time-and-batch"
+  id="toc-2-association-with-elapsed-time-and-batch">2. Association with
+  Elapsed Time and Batch</a>
+  - <a href="#21-technical-variability-in-gc-ims-data"
+    id="toc-21-technical-variability-in-gc-ims-data">2.1. Technical
+    Variability in GC-IMS Data</a>
+  - <a href="#22-methodology" id="toc-22-methodology">2.2. Methodology</a>
+    - <a href="#elapsed-time" id="toc-elapsed-time">Elapsed Time</a>
+    - <a href="#batch-number" id="toc-batch-number">Batch Number</a>
+    - <a href="#quantifying-explained-variance-with-r2"
+      id="toc-quantifying-explained-variance-with-r2">Quantifying Explained
+      Variance with <span
+      class="math inline"><em>R</em><sup>2</sup></span></a>
+    - <a href="#independence-of-elapsed-time-and-batch-number"
+      id="toc-independence-of-elapsed-time-and-batch-number">Independence of
+      Elapsed Time and Batch Number</a>
+    - <a href="#analysis-procedure" id="toc-analysis-procedure">Analysis
+      Procedure</a>
+  - <a href="#23-visualization-of-explained-variance"
+    id="toc-23-visualization-of-explained-variance">2.3. Visualization of
+    Explained Variance</a>
+    - <a href="#overall-contribution-of-each-factor"
+      id="toc-overall-contribution-of-each-factor">Overall Contribution of
+      Each Factor</a>
+  - <a href="#24-conclusion" id="toc-24-conclusion">2.4. Conclusion</a>
+- <a href="#3-principal-component-analysis"
+  id="toc-3-principal-component-analysis">3. Principal Component
+  Analysis</a>
+- <a href="#4-references" id="toc-4-references">4. References</a>
 
 **Load Peak Table**
 
