@@ -1,13 +1,13 @@
 ---
-title: "Orthogonal Correction using PC1 of Batch and Order Effects"
+title: "Orthogonal Correction using PC1 of Batch and Acquisition Effects"
 author: "Tecla Duran Fort"
 date: "`r Sys.Date()`"
 output:
+  github_document:
+    toc: yes
   pdf_document:
     toc: yes
     fig_caption: yes
-  github_document:
-    toc: yes
   html_document:
     toc: yes
     df_print: paged
@@ -42,57 +42,62 @@ X <- as.matrix(df %>% dplyr::select(starts_with("Cluster")))
 B <- model.matrix(~ 0 + factor(df$batch))
 colnames(B) <- paste0("Batch_", sort(unique(df$batch)))
 
-# Order index per batch
+# Acquisition index per batch
 df <- df %>%
   arrange(batch, elapsed_time) %>%
   group_by(batch) %>%
-  mutate(order_in_batch = row_number()) %>%
+  mutate(acquisition_index = row_number()) %>%
   ungroup()
 
-# One-hot encoding for order
-O <- model.matrix(~ 0 + factor(df$order_in_batch))
-colnames(O) <- paste0("Ord_", 1:max(df$order_in_batch))
+# One-hot encoding for acquisition index
+A <- model.matrix(~ 0 + factor(df$acquisition_index))
+colnames(A) <- paste0("Acq_", 1:max(df$acquisition_index))
 ```
 
-# 3. PCA of Batch and Order Reconstructions
+# 3. PCA of Batch and Acquisition Reconstructions
 
-```{r pca-batch-order}
+```{r pca-batch-acquisition}
 # Batch means and PCA
 X_batch_means <- B %*% (solve(t(B)%*%B) %*% t(B) %*% X)
 pca_batch <- prcomp(X_batch_means, scale. = TRUE)
 pc1_batch <- pca_batch$x[,1, drop=FALSE]
 
-# Order means and PCA
-X_order_means <- O %*% (solve(t(O)%*%O) %*% t(O) %*% X)
-pca_order <- prcomp(X_order_means, scale. = TRUE)
-pc1_order <- pca_order$x[,1, drop=FALSE]
+# Acquisition means and PCA
+X_acq_means <- A %*% (solve(t(A)%*%A) %*% t(A) %*% X)
+pca_acq <- prcomp(X_acq_means, scale. = TRUE)
+pc1_acq <- pca_acq$x[,1, drop=FALSE]
 ```
 
 ## Visualize PC1 Scores
 
-```{r pc1-plot, fig.width=10, fig.height=4, echo=FALSE}
+```{r pc1-plot, fig.width=15, fig.height=4, echo=FALSE}
 scores_batch_df <- data.frame(Sample = 1:nrow(X),
                               PC1 = pca_batch$x[,1],
                               Batch = df$batch)
-scores_order_df <- data.frame(Sample = 1:nrow(X),
-                              PC1 = pca_order$x[,1],
-                              Order = df$order_in_batch)
+scores_acq_df <- data.frame(Sample = 1:nrow(X),
+                            PC1 = pca_acq$x[,1],
+                            Acquisition = df$acquisition_index)
 
 p1 <- ggplot(scores_batch_df, aes(x = Sample, y = PC1, color = factor(Batch))) +
   geom_point(size = 1.5) +
   geom_line(aes(group = 1), alpha = 0.6, color = "grey30") +
-  scale_color_manual(values = colorRampPalette(brewer.pal(9, "YlGnBu"))(length(unique(df$batch)))) +
   labs(title = "PC1 scores from Batch-reconstructed data",
        y = "PC1", color = "Batch") +
-  theme_minimal()
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 15)
+  )
 
-p2 <- ggplot(scores_order_df, aes(x = Sample, y = PC1, color = factor(Order))) +
+p2 <- ggplot(scores_acq_df, aes(x = Sample, y = PC1, color = Acquisition)) +
   geom_point(size = 1.5) +
   geom_line(aes(group = 1), alpha = 0.6, color = "grey30") +
-  scale_color_manual(values = colorRampPalette(brewer.pal(9, "YlGnBu"))(length(unique(df$order_in_batch)))) +
-  labs(title = "PC1 scores from Order-reconstructed data",
-       y = "PC1", color = "Order") +
-  theme_minimal()
+  scale_color_viridis_c(option = "G", name = "Acquisition") +
+  labs(title = "PC1 scores from Acquisition-reconstructed data",
+       y = "PC1") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 15)
+  )
 
 p1 + p2
 ```
@@ -101,7 +106,7 @@ p1 + p2
 
 ```{r joint-correction}
 # Apply correction jointly with both directions as external variables
-joint_corr <- orthogonal_correction(X, cbind(pc1_batch, pc1_order))
+joint_corr <- orthogonal_correction(X, cbind(pc1_batch, pc1_acq))
 
 X_corr_joint <- joint_corr$corrected
 proj_joint   <- joint_corr$projection
@@ -132,7 +137,7 @@ p2 <- ggplot(df_vis, aes(x = Sample)) +
   geom_line(aes(y = Original), color = "grey50", size = 0.8, alpha = 0.7) +
   geom_line(aes(y = Projection), color = "#e9c46a", size = 1) +
   theme_minimal() +
-  labs(title = "Projection (PC1 Batch + PC1 Order)", y = "Centered Intensity") +
+  labs(title = "Projection (PC1 Batch + PC1 Acquisition)", y = "Centered Intensity") +
   ylim(y_limits)
 
 p3 <- ggplot(df_vis, aes(x = Sample, y = Corrected)) +
@@ -148,7 +153,7 @@ p3
 
 # 6. PCA Before and After Correction
 
-```{r pca-corrected, fig.width=10, fig.height=4, echo=FALSE}
+```{r pca-corr, fig.width=10, fig.height=4, echo=FALSE}
 # PCA on original and corrected data
 pca_orig <- prcomp(scale(X))
 pca_corr <- prcomp(scale(X_corr_joint))
@@ -156,57 +161,125 @@ pca_corr <- prcomp(scale(X_corr_joint))
 expl_orig <- summary(pca_orig)$importance[2,1:2] * 100
 expl_corr <- summary(pca_corr)$importance[2,1:2] * 100
 
-axis_labels_orig <- paste0("PC1 (", round(expl_orig[1],1),"%)")
-axis_labels_corr <- paste0("PC1 (", round(expl_corr[1],1),"%)")
+axis_labels_orig_x <- paste0("PC1 (", round(expl_orig[1],1),"%)")
+axis_labels_orig_y <- paste0("PC2 (", round(expl_orig[2],1),"%)")
+
+axis_labels_corr_x <- paste0("PC1 (", round(expl_corr[1],1),"%)")
+axis_labels_corr_y <- paste0("PC2 (", round(expl_corr[2],1),"%)")
 
 df_orig <- data.frame(PC1 = pca_orig$x[,1], PC2 = pca_orig$x[,2],
                       Batch = factor(df$batch),
-                      Order = df$order_in_batch)
+                      Acquisition = df$acquisition_index)
 df_corr <- data.frame(PC1 = pca_corr$x[,1], PC2 = pca_corr$x[,2],
                       Batch = factor(df$batch),
-                      Order = df$order_in_batch)
+                      Acquisition = df$acquisition_index)
+
 
 ```
 
-
-```{r pca-batch, fig.width=10, fig.height=4, echo=FALSE}
-p1_batch <- ggplot(df_orig, aes(x=PC1, y=PC2, color=Batch)) +
-  geom_point(size=2) +
-  scale_color_discrete() +
-  labs(title="Original Data (colored by Batch)", 
-       x=axis_labels_orig, y="PC2") +
-  theme_minimal()
-
-p2_batch <- ggplot(df_corr, aes(x=PC1, y=PC2, color=Batch)) +
-  geom_point(size=2) +
-  scale_color_discrete() +
-  labs(title="Corrected Data (colored by Batch)", 
-       x=axis_labels_corr, y="PC2") +
-  theme_minimal()
-
-p1_batch + p2_batch
-```
-
-
-```{r pca-elapsed, fig.width=10, fig.height=4, echo=FALSE}
+```{r pca-orig, fig.width=10, fig.height=4, echo=FALSE}
 df_orig$elapsed_time <- df$elapsed_time
+
+# Arrows
+gradient_arrow_centered <- function(x, y, v, frac = 0.28) {
+  dx <- cov(x, v, use = "complete.obs")
+  dy <- cov(y, v, use = "complete.obs")
+
+  rx <- diff(range(x, na.rm = TRUE))
+  ry <- diff(range(y, na.rm = TRUE))
+
+  len <- sqrt((dx/rx)^2 + (dy/ry)^2)
+  if (is.na(len) || len == 0) return(data.frame(x0=NA,y0=NA,x1=NA,y1=NA))
+
+  sx <- (dx/rx) / len
+  sy <- (dy/ry) / len
+
+  xc <- mean(x, na.rm = TRUE)
+  yc <- mean(y, na.rm = TRUE)
+
+  hx <- 0.5 * frac * rx * sx
+  hy <- 0.5 * frac * ry * sy
+
+  data.frame(
+    x0 = xc - hx, y0 = yc - hy,
+    x1 = xc + hx, y1 = yc + hy
+  )
+}
+
+batch_num <- as.numeric(as.character(df_orig$Batch))
+
+arr_batch <- gradient_arrow_centered(df_orig$PC1, df_orig$PC2, batch_num)
+arr_time  <- gradient_arrow_centered(df_orig$PC1, df_orig$PC2, df_orig$elapsed_time)
+
+navy <- "#0b3c5d"
+
+p_orig_batch <- ggplot(df_orig, aes(PC1, PC2, color = Batch)) +
+  geom_point(size = 2) +
+  geom_segment(
+    data = arr_batch,
+    aes(x = x0, y = y0, xend = x1, yend = y1, linetype = "Increasing batch"),
+    inherit.aes = FALSE,
+    linewidth = 1.8,
+    color = navy,
+    arrow = arrow(length = unit(0.32, "cm"))
+  ) +
+  scale_linetype_manual(name = "", values = c("Increasing batch" = "solid")) +
+  labs(x = axis_labels_orig_x, y = axis_labels_orig_y) +
+  theme_minimal()
+
+p_orig_time <- ggplot(df_orig, aes(PC1, PC2, color = elapsed_time)) +
+  geom_point(size = 2) +
+  scale_color_viridis_c(option = "G", name = "Elapsed Time") +
+  geom_segment(
+    data = arr_time,
+    aes(x = x0, y = y0, xend = x1, yend = y1, linetype = "Increasing elapsed time"),
+    inherit.aes = FALSE,
+    linewidth = 1.8,
+    color = navy,
+    arrow = arrow(length = unit(0.32, "cm"))
+  ) +
+  scale_linetype_manual(name = "", values = c("Increasing elapsed time" = "solid")) +
+  labs(x = axis_labels_orig_x, y = axis_labels_orig_y) +
+  theme_minimal()
+
+p_orig_combined <- (p_orig_batch + p_orig_time) +
+  plot_annotation(
+    title = "PCA of original data",
+    subtitle = "Colored by external variables",
+    tag_levels = "A",
+    theme = theme(
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5)
+    )
+  )
+
+p_orig_combined
+```
+
+```{r pca-corrected, fig.width=10, fig.height=4, echo=FALSE}
 df_corr$elapsed_time <- df$elapsed_time
 
-
-p1_time <- ggplot(df_orig, aes(x=PC1, y=PC2, color=elapsed_time)) +
-  geom_point(size=2) +
-  scale_color_viridis_c(option = "C") +
-  labs(title="Original Data (colored by Elapsed Time)", 
-       x=axis_labels_orig, y="PC2") +
+p_corr_batch <- ggplot(df_corr, aes(PC1, PC2, color = Batch)) +
+  geom_point(size = 2) +
+  labs(x = axis_labels_corr_x, y = axis_labels_corr_y) +
   theme_minimal()
 
-p2_time <- ggplot(df_corr, aes(x=PC1, y=PC2, color=elapsed_time)) +
-  geom_point(size=2) +
-  scale_color_viridis_c(option = "C") +
-  labs(title="Corrected Data (colored by Elapsed Time)", 
-       x=axis_labels_corr, y="PC2") +
+p_corr_time <- ggplot(df_corr, aes(PC1, PC2, color = elapsed_time)) +
+  geom_point(size = 2) +
+  scale_color_viridis_c(option = "G", name = "Elapsed Time") +
+  labs(x = axis_labels_corr_x, y = axis_labels_corr_y) +
   theme_minimal()
 
-p1_time + p2_time
+p_corr_combined <- (p_corr_batch + p_corr_time) +
+  plot_annotation(
+    title = "PCA of corrected data",
+    subtitle = "Colored by external variables",
+    tag_levels = "A",
+    theme = theme(
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5)
+    )
+  )
+
+p_corr_combined
 ```
-
