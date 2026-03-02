@@ -236,20 +236,24 @@ var_pca_batch <- pca_batch$sdev^2 / sum(pca_batch$sdev^2)
 ```
 
 ```{r var-exp-p, fig.width=4, fig.height=3, echo=FALSE}
-df_var <- data.frame(
+df_var_batch <- data.frame(
   PC = paste0("PC", 1:5),
   Variance = var_pca_batch[1:5] * 100
 )
 
-# Bar plot amb ggplot
-ggplot(df_var, aes(x = PC, y = Variance)) +
+p_batch <- ggplot(df_var_batch, aes(x = PC, y = Variance)) +
   geom_bar(stat = "identity", fill = "navy") +
   geom_text(aes(label = sprintf("%.1f%%", Variance)),
             vjust = -0.5, size = 2.5) +
-  labs(title = "Explained Variance (Top 5 PCs)",
-       x = "Principal Components",
-       y = "Variance Explained (%)") +
-  theme_minimal(base_size = 10)
+  labs(
+    title = "Explained variance of PCA on batch-reconstructed data",
+    x = "Principal Components",
+    y = "Variance Explained (%)"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+p_batch
 
 ```
 
@@ -461,20 +465,24 @@ var_pca_order <- pca_order$sdev^2 / sum(pca_order$sdev^2)
 ```
 
 ```{r var-exp-o-p, fig.width=4, fig.height=3, echo=FALSE}
-df_var <- data.frame(
+df_var_acq <- data.frame(
   PC = paste0("PC", 1:5),
   Variance = var_pca_order[1:5] * 100
 )
 
-# Bar plot amb ggplot
-ggplot(df_var, aes(x = PC, y = Variance)) +
+p_acq <- ggplot(df_var_acq, aes(x = PC, y = Variance)) +
   geom_bar(stat = "identity", fill = "navy") +
   geom_text(aes(label = sprintf("%.1f%%", Variance)),
             vjust = -0.5, size = 2.5) +
-  labs(title = "Explained Variance (Top 5 PCs)",
-       x = "Principal Components",
-       y = "Variance Explained (%)") +
-  theme_minimal(base_size = 10)
+  labs(
+    title = "Explained variance of PCA on acquisition-reconstructed data",
+    x = "Principal Components",
+    y = "Variance Explained (%)"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+p_acq
 
 ```
 \newline
