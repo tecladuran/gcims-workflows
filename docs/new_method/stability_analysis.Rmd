@@ -104,15 +104,15 @@ p <- ggplot(rsd_melt, aes(x = RSD, fill = Condition)) +
   geom_vline(xintercept = 20, color = "darkred", size = 1, linetype = "dashed") +
   scale_fill_manual(values = c("navy", "#E76F51")) +
   
-  scale_y_continuous(breaks = scales::pretty_breaks(n = 6)) +  # menys breaks = menys línies
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 6)) +
   
   labs(title = "RSD Distribution Before and After Correction",
        x = "Relative Standard Deviation (%)",
        y = "Number of Clusters") +
-  theme_minimal(base_size = 18) +
+  theme_minimal(base_size = 12) +
   theme(
-    plot.title = element_text(hjust = 0.5, size = 22),
-    panel.grid.major.y = element_line(size = 0.3)  # més net
+    plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+    panel.grid.major.y = element_line(size = 0.3)
   )
 
 p
