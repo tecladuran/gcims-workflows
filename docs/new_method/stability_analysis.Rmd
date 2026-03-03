@@ -1,0 +1,305 @@
+---
+title: "Comparison of Raw and Corrected GC-IMS Data"
+author: "Tecla Duran Fort"
+date: "`r Sys.Date()`"
+output:
+  github_document:
+    toc: true
+  html_document:
+    toc: true
+    toc_float: true
+    fig_caption: true
+    df_print: paged
+  pdf_document:
+    toc: true
+    fig_caption: true
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+# Global chunk options
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(fig.path = "Comparison_corrected_files/figure-latex/")
+
+# Load packages
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(reshape2)
+library(ggpubr)
+library(scales)
+library(patchwork)
+library(viridis)
+
+# Load GC-IMS tools (including orthogonal_correction() function)
+source("../../load_gcims_tools.R")
+```
+
+## 1. Introduction
+
+This report compares the **raw** and **corrected** GC-IMS Peak Table using the same evaluation metrics presented in the [Stability Analysis](https://github.com/tecladuran/gcims-workflows/blob/main/docs/stability_analysis.md), namely **Relative Standard Deviation (RSD)** and **variance explained by external factors**.
+
+The correction applied is based on a joint orthogonalization strategy that removes the directions defined by the **first principal component (PC1)** of the **batch effect** and the **within-batch acquisition effect**. Rather than repeating theoretical explanations, this document focuses on quantifying the improvement in signal stability and reduction of unwanted variability after correction.
+
+---
+
+## 2. Apply Correction
+
+```{r apply-correction}
+df <- read.csv("../../data/peak_table_var.csv")
+X <- as.matrix(df %>% dplyr::select(starts_with("Cluster")))
+
+# One-hot encoding for batch
+B <- model.matrix(~ 0 + factor(df$batch))
+colnames(B) <- paste0("Batch_", sort(unique(df$batch)))
+
+# Acquisition index per batch
+df <- df %>%
+  arrange(batch, elapsed_time) %>%
+  group_by(batch) %>%
+  mutate(acquisition_index = row_number()) %>%
+  ungroup()
+
+# One-hot encoding for acquisition index
+A <- model.matrix(~ 0 + factor(df$acquisition_index))
+colnames(A) <- paste0("Acq_", 1:max(df$acquisition_index))
+
+# Batch reconstruction and PC1
+X_batch_means <- B %*% (solve(t(B)%*%B) %*% t(B) %*% X)
+pca_batch <- prcomp(X_batch_means, scale. = TRUE)
+pc1_batch <- pca_batch$x[,1, drop=FALSE]
+
+# Acquisition reconstruction and PC1
+X_acq_means <- A %*% (solve(t(A)%*%A) %*% t(A) %*% X)
+pca_acq <- prcomp(X_acq_means, scale. = TRUE)
+pc1_acq <- pca_acq$x[,1, drop=FALSE]
+
+# Joint correction using both directions
+joint_corr <- orthogonal_correction(X, cbind(pc1_batch, pc1_acq))
+
+X_corr_joint <- joint_corr$corrected
+proj_joint   <- joint_corr$projection
+
+intensities <- as.data.frame(X)
+intensities_final <- as.data.frame(X_corr_joint)
+```
+
+---
+
+## 3. Relative Standard Deviation (RSD)
+
+```{r rsd-comparison, echo=FALSE}
+rsd_raw <- sapply(intensities, function(x) sd(x) / mean(x) * 100)
+rsd_corr <- sapply(intensities_final, function(x) sd(x) / mean(x) * 100)
+
+rsd_df <- data.frame(Cluster = names(rsd_raw),
+                     Raw = rsd_raw,
+                     Corrected = rsd_corr)
+
+rsd_melt <- rsd_df %>% pivot_longer(-Cluster, names_to = "Condition", values_to = "RSD")
+
+p <- ggplot(rsd_melt, aes(x = RSD, fill = Condition)) +
+  geom_histogram(position = "identity", binwidth = 5, alpha = 0.6) +
+  geom_vline(xintercept = 20, color = "darkred", size = 1, linetype = "dashed") +
+  scale_fill_manual(values = c("navy", "#E76F51")) +
+  
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 6)) +  # menys breaks = menys línies
+  
+  labs(title = "RSD Distribution Before and After Correction",
+       x = "Relative Standard Deviation (%)",
+       y = "Number of Clusters") +
+  theme_minimal(base_size = 18) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 22),
+    panel.grid.major.y = element_line(size = 0.3)  # més net
+  )
+
+p
+```
+
+---
+
+## 4. Cluster Stability
+
+To evaluate how much the correction improves the technical robustness of the dataset, we compute the number of clusters whose Relative Standard Deviation (RSD) falls below the 20% threshold, both **before** and **after** correction. This threshold is commonly used as an orientative benchmark in metabolomics quality control.
+
+```{r rsd-summary-table, echo=FALSE, fig.align="center", fig.width=5, fig.height=1, fig.cap = "Proportion of clusters with RSD below 20%, before and after correction"}
+
+# Compute number of stable clusters
+threshold <- 20
+raw_stable <- sum(rsd_raw < threshold)
+corr_stable <- sum(rsd_corr < threshold)
+total <- length(rsd_raw)
+
+stable_df <- data.frame(
+  Condition = c("Raw Data", "Corrected Data"),
+  Stable_Clusters = c(raw_stable, corr_stable),
+  Proportion = paste0(round(c(raw_stable, corr_stable) / total * 100, 1), " %")
+)
+
+ggtexttable(stable_df, rows = NULL, theme = ttheme("light"))
+```
+
+The correction process increases the proportion of stable clusters from **`r round(raw_stable / total * 100, 1)`%** to **`r round(corr_stable / total * 100, 1)`%**, confirming that the removal of dominant batch and acquisition directions improves overall signal reliability.
+
+---
+
+## 5. Principal Component Analysis (PCA)
+
+We now perform a new PCA on the corrected data to explore whether the dominant sources of variation are still aligned with external variables. The PCA on raw data already showed strong trends related to `elapsed_time` and `batch`, as shown in previous reports.
+
+### 5.1 PCA of Raw Data
+
+```{r pca-raw, echo=FALSE, warning=FALSE}
+# Perform PCA on raw data
+
+pca_raw <- prcomp(scale(intensities))
+explained_var_raw <- summary(pca_raw)$importance[2, ] * 100
+axis_labels <- paste0("PC", 1:2, " (", round(explained_var_raw[1:2], 1), "%)")
+
+pca_df_raw <- data.frame(
+  PC1 = pca_raw$x[,1],
+  PC2 = pca_raw$x[,2],
+  Elapsed_Time = df$elapsed_time,
+  Batch = as.factor(df$batch)
+)
+```
+
+```{r pca-raw-plots, echo=FALSE, fig.width=12, fig.height=4.5, fig.align='center', fig.cap = "PCA of raw data colored by elapsed time (left) and by batch (right)"}
+p1 <- ggplot(pca_df_raw, aes(x = PC1, y = PC2, color = Elapsed_Time)) +
+  geom_point(size = 2) +
+  scale_color_viridis_c(option = "G", name = "Elapsed Time") +
+  theme_minimal(base_size = 13) +
+  labs(title = "Colored by Elapsed Time",
+       x = axis_labels[1], y = axis_labels[2]) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+p2 <- ggplot(pca_df_raw, aes(x = PC1, y = PC2, color = Batch)) +
+  geom_point(size = 2) +
+  theme_minimal(base_size = 13) +
+  labs(title = "Colored by Batch",
+       x = axis_labels[1], y = axis_labels[2]) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+combined_plot <- p1 + p2
+combined_plot
+
+```
+
+
+```{r pca-variance-raw, echo=FALSE, fig.width=5, fig.height=3, fig.align='center', fig.cap = "Explained variance by the first six PCA components (raw data)"}
+var_df_raw <- data.frame(
+  PC = paste0("PC", 1:6),
+  Variance = explained_var_raw[1:6]
+)
+
+ggplot(var_df_raw, aes(x = PC, y = Variance)) +
+  geom_col(fill = "#A8DADC") +
+  theme_minimal(base_size = 13) +
+  labs(title = "PCA of Raw Data — Variance Explained",,
+       x = "Principal Component", y = "Explained Variance (%)") +
+  theme(axis.text.x = element_text(size = 11))
+```
+
+---
+
+### 5.2. PCA of Corrected Data
+
+```{r pca-new, echo=FALSE}
+# PCA on corrected data
+pca_corr <- prcomp(scale(intensities_final))
+explained_corr <- summary(pca_corr)$importance[2, ] * 100
+axis_labels_corr <- paste0("PC", 1:2, " (", round(explained_corr[1:2], 1), "%)")
+
+pca_df_corr <- data.frame(
+  PC1 = pca_corr$x[, 1],
+  PC2 = pca_corr$x[, 2],
+  Elapsed_Time = df$elapsed_time,
+  Batch = as.factor(df$batch)
+)
+```
+
+```{r pca-corrected-color, echo=FALSE, fig.width=12, fig.height=4.5, fig.cap = "PCA of corrected data colored by elapsed time (left) and by batch (right)", fig.align='center'}
+
+p1 <- ggplot(pca_df_corr, aes(x = PC1, y = PC2, color = Elapsed_Time)) +
+  geom_point(size = 2) +
+  scale_color_viridis_c(option = "G", name = "Elapsed Time") +
+  theme_minimal(base_size = 13) +
+  labs(title = "Colored by Elapsed Time",
+       x = axis_labels_corr[1], y = axis_labels_corr[2]) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+p2 <- ggplot(pca_df_corr, aes(x = PC1, y = PC2, color = Batch)) +
+  geom_point(size = 2) +
+  theme_minimal(base_size = 13) +
+  labs(title = "Colored by Batch",
+       x = axis_labels_corr[1], y = axis_labels_corr[2]) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+combined_plot <- p1 + p2
+combined_plot
+
+```
+
+```{r pca-corrected-variance, echo=FALSE, fig.width=5, fig.height=3, fig.cap = "Variance explained by the first six PCA components (corrected data)", fig.align='center'}
+
+var_df_corr <- data.frame(PC = paste0("PC", 1:6),
+                          Variance = explained_corr[1:6])
+
+ggplot(var_df_corr, aes(x = PC, y = Variance)) +
+  geom_col(fill = "#A8DADC") +
+  theme_minimal(base_size = 13) +
+  labs(title = "PCA of Corrected Data — Variance Explained",
+       x = "Principal Component", y = "Explained Variance (%)") +
+  theme(axis.text.x = element_text(size = 11))
+```
+
+Compared to the PCA of the raw data, the corrected data shows a more homogeneous distribution of variance across components, and no evident separation or gradient is observed when coloring by elapsed time or batch. This suggests that external influences no longer dominate the variance structure after correction.
+
+```{r}
+# Data frames
+var_df_corr <- data.frame(PC = paste0("PC", 1:6),
+                          Variance = explained_corr[1:6])
+var_df_raw <- data.frame(PC = paste0("PC", 1:6),
+                         Variance = explained_var_raw[1:6])
+
+# Plots
+p_raw <- ggplot(var_df_raw, aes(x = PC, y = Variance)) +
+  geom_col(fill = "#E76F51", alpha = 0.9) +
+  theme_minimal(base_size = 13) +
+  labs(title = "Raw Data",
+       x = "Principal Component", 
+       y = "Explained Variance (%)") +
+  theme(axis.text.x = element_text(size = 9),
+        plot.title = element_text(hjust = 0.5))
+
+p_corr <- ggplot(var_df_corr, aes(x = PC, y = Variance)) +
+  geom_col(fill = "navy", alpha = 0.9) +
+  theme_minimal(base_size = 13) +
+  labs(title = "Corrected Data",
+       x = "Principal Component", 
+       y = NULL) +
+  theme(axis.text.x = element_text(size = 9),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+
+# Combine with panel labels and bold title
+final_plot <- (p_raw | p_corr) +
+  plot_annotation(
+    title = "PCA — Variance Explained",
+    tag_levels = "A"
+  ) &
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5, face = "bold"),
+    plot.tag = element_text(size = 14, face = "bold")
+  )
+
+final_plot
+```
+
+---
+
+## 7. Conclusion
+
+The applied correction successfully reduces the influence of time and batch effects. The PCA projection confirms that corrected data no longer follows the acquisition order. This confirms the effectiveness of the orthogonalization strategy when applied directly to the raw intensity matrix.
