@@ -173,28 +173,35 @@ var_df_raw <- data.frame(PC = paste0("PC", 1:6),
 
 # Plots
 p_raw <- ggplot(var_df_raw, aes(x = PC, y = Variance)) +
-  geom_col(fill = "#457B9D") +
+  geom_col(fill = "#E76F51", alpha = 0.9) +
   theme_minimal(base_size = 13) +
   labs(title = "Raw Data",
-       x = "Principal Component", y = "Explained Variance (%)") +
-  theme(axis.text.x = element_text(size = 11),
+       x = "Principal Component", 
+       y = "Explained Variance (%)") +
+  theme(axis.text.x = element_text(size = 9),
         plot.title = element_text(hjust = 0.5))
 
 p_corr <- ggplot(var_df_corr, aes(x = PC, y = Variance)) +
-  geom_col(fill = "#A8DADC") +
+  geom_col(fill = "navy", alpha = 0.9) +
   theme_minimal(base_size = 13) +
   labs(title = "Corrected Data",
-       x = "Principal Component", y = NULL) +
-  theme(axis.text.x = element_text(size = 11),
+       x = "Principal Component", 
+       y = NULL) +
+  theme(axis.text.x = element_text(size = 9),
         axis.title.y = element_blank(),
         plot.title = element_text(hjust = 0.5))
 
-# Combine with generic title
+# Combine with panel labels and bold title
 final_plot <- (p_raw | p_corr) +
-  plot_annotation(title = "PCA — Variance Explained") &
-  theme(plot.title = element_text(size = 16, hjust = 0.5))
+  plot_annotation(
+    title = "PCA — Variance Explained",
+    tag_levels = "A"
+  ) &
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5, face = "bold"),
+    plot.tag = element_text(size = 14, face = "bold")
+  )
 
-# Show in Rmd
 final_plot
 ```
 
