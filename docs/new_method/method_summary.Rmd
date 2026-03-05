@@ -3,11 +3,11 @@ title: "Orthogonal Correction using PC1 of Batch and Acquisition Effects"
 author: "Tecla Duran Fort"
 date: "`r Sys.Date()`"
 output:
-  github_document:
-    toc: yes
   pdf_document:
     toc: yes
     fig_caption: yes
+  github_document:
+    toc: yes
   html_document:
     toc: yes
     df_print: paged
@@ -78,9 +78,17 @@ scores_acq_df <- data.frame(Sample = 1:nrow(X),
                             PC1 = pca_acq$x[,1],
                             Acquisition = df$acquisition_index)
 
+scores_batch_df <- data.frame(Sample = 1:nrow(X),
+                              PC1 = pca_batch$x[,1],
+                              Batch = df$batch)
+
+scores_acq_df <- data.frame(Sample = 1:nrow(X),
+                            PC1 = pca_acq$x[,1],
+                            Acquisition = factor(df$acquisition_index))
+
 p1 <- ggplot(scores_batch_df, aes(x = Sample, y = PC1, color = factor(Batch))) +
-  geom_point(size = 1.5) +
-  geom_line(aes(group = 1), alpha = 0.6, color = "grey30") +
+  geom_line(aes(group = 1), color = "grey40", linewidth = 1, alpha = 0.7) +
+  geom_point(size = 2, alpha=0.9) +
   labs(title = "PC1 scores from Batch-reconstructed data",
        y = "PC1", color = "Batch") +
   theme_minimal() +
@@ -89,9 +97,9 @@ p1 <- ggplot(scores_batch_df, aes(x = Sample, y = PC1, color = factor(Batch))) +
   )
 
 p2 <- ggplot(scores_acq_df, aes(x = Sample, y = PC1, color = Acquisition)) +
-  geom_point(size = 1.5) +
-  geom_line(aes(group = 1), alpha = 0.6, color = "grey30") +
-  scale_color_viridis_c(option = "G", name = "Acquisition") +
+  geom_line(aes(group = 1), color = "grey40", linewidth = 1, alpha = 0.7) +
+  geom_point(size = 2.2) +
+  scale_color_viridis_d(option = "G", name = "Acquisition") +
   labs(title = "PC1 scores from Acquisition-reconstructed data",
        y = "PC1") +
   theme_minimal() +
@@ -101,6 +109,28 @@ p2 <- ggplot(scores_acq_df, aes(x = Sample, y = PC1, color = Acquisition)) +
 
 p1 + p2
 ```
+
+
+```{r, echo=FALSE}
+combined_plot <- (p1 / p2) +
+  plot_annotation(tag_levels = "A")
+
+
+ggsave(
+  "~/Documents/gcims/gcims-workflows/figures/new_method_figures/pcs/pc1_scores_batch_acquisition.png",
+  combined_plot,
+  width = 9,
+  height = 7,
+  dpi = 600
+)
+ggsave(
+  "~/Documents/gcims/gcims-workflows/figures/new_method_figures/pcs/pc1_scores_batch_acquisition.pdf",
+  combined_plot,
+  width = 9,
+  height = 7
+)
+```
+
 
 # 4. Orthogonal Correction
 
